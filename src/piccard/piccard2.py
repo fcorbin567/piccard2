@@ -466,7 +466,7 @@ def cluster_count_plot(
     return plt
 
 
-def clustered_map_plot(
+def cluster_map_plot(
     year: str,
     cluster_col_prefix: str,
     geofile_path: Optional[str] = None,
