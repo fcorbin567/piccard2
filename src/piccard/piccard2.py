@@ -17,7 +17,11 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-def clustering_prep(network_table:pd.DataFrame, id:str, cols:list=[]) -> tuple[np.ndarray[np.float64], dict[str, Any]]:
+def clustering_prep(
+    network_table:pd.DataFrame, 
+    id:str, 
+    cols:list=[]
+) -> tuple[np.ndarray[np.float64], dict[str, Any]]:
     '''
     Converts a piccard network table into a 3d numpy array of all possible paths and their corresponding
     features. This will be used for clustering with tscluster.
@@ -85,7 +89,16 @@ def clustering_prep(network_table:pd.DataFrame, id:str, cols:list=[]) -> tuple[n
     return (list_of_arrays, label_dict)
 
 
-def cluster(network_table:pd.DataFrame, G:nx.Graph, id:str, num_clusters:int, algo:str='greedy', scheme:str='z1c1', arr:np.ndarray[np.float64]=None, label_dict:dict[str, Any]=None) -> Union[OptTSCluster, GreedyTSCluster]:
+def cluster(
+    network_table:pd.DataFrame, 
+    G:nx.Graph, 
+    id:str, 
+    num_clusters:int, 
+    algo:str='greedy', 
+    scheme:str='z1c1', 
+    arr:np.ndarray[np.float64] | None =None, 
+    label_dict:dict[str, Any] | None =None
+) -> Union[OptTSCluster, GreedyTSCluster]:
     '''
     Runs one of tscluster's clustering algorithms (default is fully dynamic clustering or 'z1c1')
     and adds the resulting cluster assignments to the network table and nodes as an additional feature.
@@ -178,22 +191,51 @@ def cluster(network_table:pd.DataFrame, G:nx.Graph, id:str, num_clusters:int, al
 # Plot & Visuals
 
 def plot_clusters(
-    tsc: Union[OptTSCluster, GreedyTSCluster],
     network_table: pd.DataFrame,
     arr: np.ndarray[np.float64],
     label_dict: dict[str, Any],
-    dynamic_entities_only: bool = True,
-    entities_to_show: List[int] | None = None,
+    tsc: Union[OptTSCluster, GreedyTSCluster],
+    dynamic_paths_only: bool = True,
+    paths_to_show: List[int] | None = None,
     clusters_to_show: List[int] | None = None, 
     clusters_to_exclude: List[int] = [],
     figsize: Tuple[float, float] = (700, 500),
     cluster_labels: List[str] | None = None,
-    title_list: List[str] | None = None,
     x_rotation: float | int = 45,
-    hover_labels: bool = False,
+    hover_labels: bool = True,
 ) -> List[go.Figure]:
     '''
-    
+    Creates a plotly scatterplot for each variable used in clustering with each timestep 
+    on the x axis and values on the y axis. The colours of data points correspond to their assigned cluster,
+    and there is a legend showing which colour goes with which cluster. (Cluster numbers start at 0.)
+    Since cluster assignment often changes along the same path (or within the same area) over the years,
+    plotting all the data points in one cluster often involves considering other clusters as well. Therefore,
+    when you select a cluster to plot, you will see every path that contains a point in that cluster, and some
+    of these paths will also contain paths in different clusters.
+    Add any clusters you don't want to see (e.g. a cluster composed of NaN values) to exclude_clusters. This
+    will exclude all paths containing these clusters, even paths that also have paths specified in the
+    clusters list. In addition, you can curate the specific paths you want to see with paths_to_show; just
+    make sure the paths are numbered according to their position in network_table.
+
+    Inputs:
+    - network_table: The result of pc.create_network_table().
+    - arr, label_dict: The result of pc.clustering_prep(). label_dict could also be a custom label dictionary.
+    - tsc: The result of pc.cluster() (an OptTSCluster object).
+    - dynamic_paths_only (optional): A boolean indicating whether to only plot dynamic entities (entities whose cluster
+    assignment has changed over time). Default is true.
+    - paths_to_show (optional): A list of paths (numbered according to their position in network_table) whose points 
+    will be displayed on the map. Default is every path.
+    - clusters_to_show (optional): A list of the clusters whose points will be displayed on the map. Default is every cluster.
+    - clusters_to_exclude (optional): A list of the clusters whose points will NOT be displayed on the map. Default is
+    an empty list.
+    - figsize (optional): A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
+    - cluster_labels (optional): A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
+    - x_rotation (optional): How many degrees to rotate the ticks on the x axis by. You may want to use this parameter
+    if you have a lot of timesteps and the x axis will be crowded. Default is 45 degrees.
+    - hover_labels (optional): A boolean indicating whether you can see the x-value, y-value, and path number of
+    each point on the plot if you hover your cursor over the point. Default is true.
+
+    Returns a list of plotly figures (you cannot show the whole list; rather, iterate through the list and show each figure)
     '''
 
     # get necessary data from tsc
@@ -205,27 +247,25 @@ def plot_clusters(
     K = cluster_centres.shape[1] if cluster_centres is not None else np.unique(labels).size
 
     # set default values and colours
-    if entities_to_show is None:
-        entities_to_show = list(range(arr.shape[1]))  # show all
+    if paths_to_show is None:
+        paths_to_show = list(range(arr.shape[1]))  # show all
     if clusters_to_show is None:
         clusters_to_show = list(range(K))
     if cluster_labels is None:
         cluster_labels = [str(i) for i in range(K)]
-    if title_list is None:
-        title_list = [f"Feature {f}" for f in label_dict['F']]
     colors = plotly.colors.qualitative.Plotly
     if K > len(colors):
         colors = list(islice(cycle(colors), K))
 
     # filter entities
-    entities_to_show = [
-        i for i in entities_to_show
+    paths_to_show = [
+        i for i in paths_to_show
         if any(int(c) in clusters_to_show for c in network_table.iloc[i][-len(label_dict['T']):])
         and all(int(c) not in clusters_to_exclude for c in network_table.iloc[i][-len(label_dict['T']):])
     ]
-    if dynamic_entities_only:
+    if dynamic_paths_only:
         dynamic_entities = set(tsc.get_dynamic_entities()[0])
-        entities_to_show = [i for i in entities_to_show if i in dynamic_entities]
+        paths_to_show = [i for i in paths_to_show if i in dynamic_entities]
 
     figures = []
 
@@ -233,7 +273,7 @@ def plot_clusters(
         fig = go.Figure()
         used_clusters = set()
         # iterate through each path
-        for i in entities_to_show:
+        for i in paths_to_show:
             mode = 'lines+markers' if hover_labels else 'lines'
             # plot lines indicating values
             fig.add_trace(
@@ -276,7 +316,7 @@ def plot_clusters(
         fig.update_layout(
             width=figsize[0],
             height=figsize[1],
-            title=title_list[f],
+            title=label_dict['F'][f],
             xaxis_title="Year",
             yaxis_title="Value",
             xaxis=dict(tickangle=x_rotation),
@@ -287,8 +327,13 @@ def plot_clusters(
     return figures
 
 
-def parallel_plot(network_table: pd.DataFrame, feature_name: str, years: List[str], title: str = "Tract Paths Across Years",
-                  height: int = 600) -> go.Figure:
+def parallel_plot(
+    network_table: pd.DataFrame, 
+    feature_name: str, 
+    years: List[str], 
+    title: str = "Tract Paths Across Years",
+    height: int = 600
+) -> go.Figure:
     """
     Creates an interactive parallel categories (parallel sets) plot using Plotly Express
     to visualize how categorical features (e.g., cluster assignments) evolve over time.
@@ -342,15 +387,15 @@ def parallel_plot(network_table: pd.DataFrame, feature_name: str, years: List[st
 
 
 def cluster_count_plot(
-        network_table: pd.DataFrame,
-        feature_name: str,
-        years: List[str],
-        title: str = "Cluster",
-        x_label: str = "Year",
-        y_label: str = "Number of Census Tracts",
-        legend_title: str = "Cluster",
-        figure_size: Tuple[int, int] = (12, 6),
-        stacked: bool = True,
+    network_table: pd.DataFrame,
+    feature_name: str,
+    years: List[str],
+    title: str = "Cluster",
+    x_label: str = "Year",
+    y_label: str = "Number of Census Tracts",
+    legend_title: str = "Cluster",
+    figure_size: Tuple[int, int] = (12, 6),
+    stacked: bool = True,
 ) -> plt:
     """
     Plots the change in cluster composition over time using an area chart.
@@ -422,12 +467,12 @@ def cluster_count_plot(
 
 
 def clustered_map_plot(
-        year: str,
-        cluster_col_prefix: str,
-        geofile_path: Optional[str] = None,
-        network_table: Optional[pd.DataFrame] = None,
-        gdf: Optional[gpd.GeoDataFrame] = None,
-        figure_size: tuple = (10, 10),
+    year: str,
+    cluster_col_prefix: str,
+    geofile_path: Optional[str] = None,
+    network_table: Optional[pd.DataFrame] = None,
+    gdf: Optional[gpd.GeoDataFrame] = None,
+    figure_size: tuple = (10, 10),
 ) -> plt.Figure:
     """
     Plot cluster assignments for a specific year using a GeoDataFrame
