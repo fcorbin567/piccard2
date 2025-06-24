@@ -3,16 +3,34 @@ import pandas as pd
 import geopandas as gpd
 import networkx as nx
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import math
-import re
+import random
+from typing import Optional, List
 
-def preprocessing(ct_data, year, id):
+def preprocessing(
+    data: gpd.GeoDataFrame, 
+    year: str, 
+    id: str
+) -> gpd.GeoDataFrame:
   '''
-  Return a cleaned geopandas df of the inputted CT data.
-  Note: Input data is assumed to have been passed through gpd.read_file()
+    Returns a cleaned geopandas df of the input data.
+    Note: Input data is assumed to have been passed through gpd.read_file() beforehand.
+
+    Parameters:
+        data (GeoDataFrame):
+            The census data to be analyzed with piccard.
+
+        year (str):
+            The year that the census data was collected.
+
+        id (str):
+            The name of the unique identifier that will be used to distinguish geographical areas.
+    
+    Returns:
+        GeoDataFrame: the cleaned data
   '''
-  process_data = ct_data.copy()
+  process_data = data.copy()
 
   #Suppressing CRS warning associated with .buffer()
   with warnings.catch_warnings():
@@ -23,6 +41,319 @@ def preprocessing(ct_data, year, id):
   process_data[id] = year + '_' + process_data[id]
 
   return process_data
+
+
+def create_network(
+    census_dfs: List[gpd.GeoDataFrame], 
+    years: List[str], 
+    id: str, 
+    threshold: Optional[float] = 0.05
+) -> nx.Graph:
+  '''
+  Creates a network representation of the temporal connections present in `census_dfs` over `years` 
+  when each yearly geographic area has at most `threshold` percentage of overlap with its 
+  corresponding area(s) in the next year. Represents geographical areas as nodes, and temporal connections
+  as edges.
+
+  Parameters:
+      census_dfs (List[gpd.GeoDataFrame]):
+          A list of GeoDataFrames containing the census data to be turned into a network.
+
+      years (List[str]):
+          A list of years present in census_dfs over which the network representation will be created.
+          Data from years not present in years will be ignored.
+      
+      id (str):
+          The name of the unique identifier that will be used to distinguish geographical areas.
+
+      threshold (float | None):
+          The percentage of overlap (divided by 100)
+          that geographic areas must meet or exceed in order to have a connection.
+          Default is 0.05, or 5 percent.    
+
+  Returns:
+      nx.Graph: The networkx graph containing the nodes (geographical areas) and edges (geographical overlap)
+          created in the new network representation.
+
+  '''
+  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  contained_cts = ct_containment(preprocessed_dfs, years)
+
+  nodes = get_nodes(contained_cts, id, threshold)
+  attributes = get_attributes(nodes, census_dfs, years, id)
+
+  G = nx.from_pandas_edgelist(nodes, f'{id}_1', f'{id}_2')
+  nx.set_node_attributes(G, attributes.set_index(id).to_dict('index'))
+
+  return G
+
+
+def create_network_table(
+    census_dfs: List[gpd.GeoDataFrame], 
+    years: List[str], 
+    id: str, 
+    threshold: Optional[float] = 0.05
+) -> pd.DataFrame:
+  '''
+  Creates a pandas DataFrame showing the network representation of the census data in census_dfs. 
+  Each feature present in the data is a column, and each possible path through the network is a row.
+
+  Parameters:
+      census_dfs (List[gpd.GeoDataFrame]):
+          A list of GeoDataFrames containing the census data to be turned into a network.
+
+      years (List[str]):
+          A list of years present in census_dfs over which the network representation will be created.
+          Data from years not present in years will be ignored.
+      
+      id (str):
+          The name of the unique identifier that will be used to distinguish geographical areas.
+
+      threshold (float | None):
+          The percentage of overlap (divided by 100)
+          that geographic areas must meet or exceed in order to have a connection.
+          Default is 0.05, or 5 percent.    
+
+  Returns:
+      pd.DataFrame: the table.
+  '''
+  num_years = len(years)
+  num_joins = math.ceil(num_years/2)
+  final_cols = [id + '_' + col_name for col_name in years]
+  network_table = pd.DataFrame()
+  drop_cols = final_cols[1:]
+
+  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  contained_cts = ct_containment(preprocessed_dfs, years)
+  nodes = get_nodes(contained_cts, id, threshold)
+
+  #all_paths returns a three item tuple
+  all_paths = find_all_paths(nodes, num_joins, id)
+  all_paths_df = all_paths[0]
+  left_cols = all_paths[1]
+  # right_cols = all_paths[2]
+
+  #Dividing all network paths into full paths and partial paths
+  na_df = all_paths_df[all_paths_df.isnull().any(axis=1)]
+  no_na_df = all_paths_df[~all_paths_df.isnull().any(axis=1)]
+
+  full_paths = find_full_paths(no_na_df, final_cols)
+  full_paths_list = full_paths.to_numpy().flatten()
+
+  partial_paths = find_partial_paths(na_df, years, left_cols, final_cols, full_paths_list)
+
+  network_table = pd.concat([full_paths, partial_paths])
+  network_table = network_table[final_cols]
+  network_table = network_table.T.drop_duplicates().T
+  network_table = network_table.drop_duplicates(subset=drop_cols, keep='last')
+  network_table.sort_values(by=final_cols[0], ignore_index=True)
+
+  attributes = get_attributes(nodes, census_dfs, years, id)
+  final_table = attach_attributes(network_table, attributes, years, final_cols, id)
+
+  #Formatting final table columns
+  for i in range(len(final_cols)):
+      col = str(final_cols[i])
+      popped = final_table.pop(col)
+      final_table.insert(i, popped.name, popped)
+  final_table.columns= final_table.columns.str.lower()
+
+  return final_table
+
+
+def plot_subnetwork(
+    network_table: pd.DataFrame, 
+    G: nx.Graph, 
+    years: Optional[List[str]] = None,
+    paths_to_show: Optional[List[int]] = None,
+    ids_to_show: Optional[List[str]] = None,
+    num_to_sample: Optional[int] = 4
+) -> go.Figure:
+    """
+    Draws a subgraph of the network representation. If neither a specific list of ids to show nor a specific
+    list of paths to show are given, picks num_to_sample random nodes from the first census year in the data
+    and plots a subnetwork of their paths.
+    Hovering over each node shows the paths the node is part of.
+
+    Parameters:
+        network_table (pd.DataFrame):
+            The result of pc.create_network_table().
+        
+        G (nx.Graph):
+            The result of pc.create_network().
+
+        years (List[str] | None):
+            A list of years to show in the subnetwork. Default is all census years present in the data.
+
+        paths_to_show (List[int] | None):
+            A list of paths (numbered according to their position in network_table) whose points 
+            will be plotted in the subnetwork.
+
+        ids_to_show (List[str] | None):
+            A list of ids (use the same id you used when creating the graph and network table) that
+            will be plotted in the subnetwork. If both paths_to_show and ids_to_show are given, the function
+            will only consider ids_to_show.
+
+        num_to_sample (int | None):
+            The number of random nodes to plot the paths of in the subnetwork. Default is 4. 
+            Note: A large num_to_sample value may result in an unorganized and hard-to-read visualization.
+    
+    Returns:
+        go.Figure: 
+            The interactive subnetwork plot.
+    """
+    # create valid list of years
+    all_years = sorted(list({int(year[0][:4]) for year in G.nodes(data=True)}))
+    if years is None:
+        years = all_years
+    else:
+        years = [year for year in years if int(year) in all_years]
+        if len(years) == 0:
+            years = all_years
+    all_years = [str(year) for year in all_years]
+    years = [str(year) for year in years]
+
+    # organize node names by year and network table path number
+    paths_for_each_year = [list(network_table[network_table.columns[i]]) for i in range(len(years))]
+
+    # prepare nodes to be graphed
+    sample_nodes = []
+    sample_nodes_iteration = []
+    # get nodes by id
+    if ids_to_show is not None:
+        for year in years:
+            for id in ids_to_show:
+                sample_nodes.append(f'{year}_{id}')
+    # get nodes by network table path
+    elif paths_to_show is not None:
+        for year in years:
+            year_index = all_years.index(year)
+            for i in paths_to_show:
+                sample_nodes.append(paths_for_each_year[year_index][i])
+    # get nodes by random sample
+    else:
+        year_nodes = [node for node in list(G.nodes(data=True)) if node[0][:4] == years[0]]
+        for _ in range(num_to_sample):
+            rand = random.randrange(len(year_nodes))
+            sample_nodes.append(year_nodes[rand][0])
+            sample_nodes_iteration.append(year_nodes[rand])
+        for node in list(G.nodes(data=True)):
+            if any([G.has_edge(node[0], sample_node[0]) for sample_node in sample_nodes_iteration]):
+                sample_nodes.append(node[0])
+                sample_nodes_iteration.append(node)
+
+    # create the graph
+    subgraph = G.subgraph(sample_nodes)
+    pos = nx.multipartite_layout(subgraph, subset_key='network_level')
+
+    edge_x = []
+    edge_y = []
+    for edge in subgraph.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
+
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=1, color='gray'),
+        hoverinfo='none',
+        mode='lines'
+    )
+
+    # customize node information
+    node_x = []
+    node_y = []
+    text = []
+    title_text = []
+    for node in subgraph.nodes():
+        paths = ''
+        for year in years:
+            year_index = all_years.index(year)
+            for i in range(len(paths_for_each_year[year_index])):
+                if paths_for_each_year[year_index][i] == node:
+                    paths = paths + f'Path {i}, '
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        text.append(f'ID: {node}    Paths: {paths[:-2]}')
+        title_text.append(node)
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        text=title_text,
+        textposition='top center',
+        hoverinfo='text',
+        hovertext=text,
+        marker=dict(
+            showscale=False,
+            color='orange',
+            size=10,
+            line=dict(width=2)
+        )
+    )
+
+    fig = go.Figure(data=[edge_trace, node_trace],
+                    layout=go.Layout(
+                        title='Subnetwork',
+                        showlegend=False,
+                        hovermode='closest',
+                        margin=dict(b=30,l=30,r=30,t=80),
+                        xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False)
+                    ))
+    return fig
+
+
+def plot_num_areas(
+    network_table: pd.DataFrame, 
+    years: Optional[List[str]] = None,
+) -> go.Figure:
+    '''
+    Plots the number of geographical areas across a subset of census years in the data.
+
+    Parameters:
+        network_table (pd.DataFrame):
+            The result of pc.create_network_table().
+
+        years (List[str] | None):
+            A list of years to show in the subnetwork. Default is all census years present in the data.
+
+    Returns:
+        go.Figure:
+            The plot of the number of geographical areas.
+    '''
+    id_label = network_table.columns[0][:-5]
+    if years is None:
+        year_cols = [col for col in network_table.columns.to_list() if id_label in col]
+        years = sorted(list({col[-4:] for col in year_cols}))
+
+    ct_per_year = []
+    num_years = len(years)
+    for i in range(num_years):
+        ids_list = list(network_table[network_table.columns[i]])
+        ct_per_year.append(len({id for id in ids_list}))
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=ct_per_year,
+        mode='lines+markers',
+        line=dict(color='royalblue'),
+        marker=dict(size=8),
+        name=f'Number of {id_label}s'
+    ))
+
+    fig.update_layout(
+        title=f'Number of {id_label}s from {years[0]} to {years[num_years - 1]}',
+        xaxis_title='Year',
+        yaxis_title=f'Number of {id_label}s',
+        width=700,
+        height=500,
+    )
+
+    return fig
 
 
 def ct_containment(preprocessed_dfs, years):
@@ -112,22 +443,6 @@ def get_attributes(nodes, census_dfs, years, id):
   #Assigning each node its level in the network (used for mainly drawing)
   all_attr['network_level'] = all_attr.apply(lambda x: assign_node_level(x, years, id), axis=1)
   return all_attr
-
-
-def create_network(census_dfs, years, id, threshold=0.05):
-  '''
-  Create network corresponding to input nodes and attributes.
-  '''
-  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
-  contained_cts = ct_containment(preprocessed_dfs, years)
-
-  nodes = get_nodes(contained_cts, id, threshold)
-  attributes = get_attributes(nodes, census_dfs, years, id)
-
-  G = nx.from_pandas_edgelist(nodes, f'{id}_1', f'{id}_2')
-  nx.set_node_attributes(G, attributes.set_index(id).to_dict('index'))
-
-  return G
 
 
 def find_all_paths(nodes_df, num_joins, id):
@@ -285,113 +600,3 @@ def attach_attributes(network_table, attributes, years, final_cols, id):
   #Combining all years dfs into one
   network_table = (pd.concat(years_df_list, axis=1)).dropna(how='all', axis=1)
   return network_table
-
-
-def create_network_table(census_dfs, years, id, threshold=0.05):
-  '''
-  Return the final network table with all the temporal connections present in
-  the input data over all the input years.
-  '''
-  num_years = len(years)
-  num_joins = math.ceil(num_years/2)
-  final_cols = [id + '_' + col_name for col_name in years]
-  network_table = pd.DataFrame()
-  drop_cols = final_cols[1:]
-
-  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
-  contained_cts = ct_containment(preprocessed_dfs, years)
-  nodes = get_nodes(contained_cts, id, threshold)
-
-  #all_paths returns a three item tuple
-  all_paths = find_all_paths(nodes, num_joins, id)
-  all_paths_df = all_paths[0]
-  left_cols = all_paths[1]
-  right_cols = all_paths[2]
-
-  #Dividing all network paths into full paths and partial paths
-  na_df = all_paths_df[all_paths_df.isnull().any(axis=1)]
-  no_na_df = all_paths_df[~all_paths_df.isnull().any(axis=1)]
-
-  full_paths = find_full_paths(no_na_df, final_cols)
-  full_paths_list = full_paths.to_numpy().flatten()
-
-  partial_paths = find_partial_paths(na_df, years, left_cols, final_cols, full_paths_list)
-
-  network_table = pd.concat([full_paths, partial_paths])
-  network_table = network_table[final_cols]
-  network_table = network_table.T.drop_duplicates().T
-  network_table = network_table.drop_duplicates(subset=drop_cols, keep='last')
-  network_table.sort_values(by=final_cols[0], ignore_index=True)
-
-  attributes = get_attributes(nodes, census_dfs, years, id)
-  final_table = attach_attributes(network_table, attributes, years, final_cols, id)
-
-  #Formatting final table columns
-  for i in range(len(final_cols)):
-      col = str(final_cols[i])
-      popped = final_table.pop(col)
-      final_table.insert(i, popped.name, popped)
-  final_table.columns= final_table.columns.str.lower()
-
-  return final_table
-
-
-def draw_subnetwork(network_table, G, num_cts=4):
-  """
-  Draws a subgraph of the network representation where num_cts is the
-  number of census tracts in the first census year which are followed through
-  all census years.
-
-  Note: A large num_cts value may result in an unorganized and hard-to-read
-        visualization. 
-  """
-  r = re.compile('ctuid_[0-9]+')
-
-  table_cols = list(network_table.columns)
-  sample_cols = list(filter(r.match, table_cols))
-
-  #Sampling n nodes from the first year
-  ct_ids = network_table[sample_cols]
-  first_year_mask = network_table.iloc[:, 0].notnull()
-  first_year_sample = ct_ids.iloc[:, 0][first_year_mask].sample(num_cts)
-
-  #Selecting all connections beginning with sample nodes from first year
-  ct_sample = ct_ids[ct_ids.iloc[:, 0].isin(first_year_sample)]
-
-  sample_nodes = []
-  #Adding corresponding year prefix to all nodes for labels and collecting all 
-  #visualization nodes in a single list
-  for i in range(len(sample_cols)):
-    curr_col = sample_cols[i]
-    curr_nodes = sample_cols[i][6:] + '_' + ct_sample.loc[:, curr_col]
-    sample_nodes.append(curr_nodes)
-
-  sample_nodes = pd.concat(sample_nodes, axis=0, sort=True, ignore_index=True)
-
-  subgraph = G.subgraph(sample_nodes)
-
-  #Calculating the figure size based on the number of nodes
-  num_nodes = len(subgraph)
-  fig_width = max(10, num_nodes * 0.2)  # Minimum figure width of 10
-  fig_height = max(5, num_nodes * 0.2)  # Minimum figure height of 5
-  
-  plt.figure(figsize=(fig_width, fig_height))
-  pos = nx.multipartite_layout(subgraph, subset_key='network_level')
-
-  nx.draw(subgraph, pos, with_labels=True, node_size=300, node_color='orange')
-  plt.show()
-
-
-def plot_num_cts(network_table, years, id):
-  '''
-  Plots the number of census tracts across all given census years.
-  '''
-  num_years = len(years)
-  ct_df = network_table.iloc[:, :num_years]
-  ct_per_year = list(ct_df.apply(lambda x: x.notnull().sum()))
-
-  plt.plot(years, ct_per_year)
-  plt.title(f'Number of {id}s across all census years')
-  plt.xlabel('Year')
-  plt.ylabel(f'Number of {id}s')
-  plt.show()

@@ -1,4 +1,5 @@
 import math
+import random
 import numpy as np
 import geopandas as gpd
 import plotly
@@ -15,12 +16,167 @@ from typing import Union, Any, List, Tuple, Optional # for type annotations
 import warnings
 warnings.filterwarnings('ignore')
 
+# Network Creation
+
+def preprocessing(
+    data: gpd.GeoDataFrame, 
+    year: str, 
+    id: str
+) -> gpd.GeoDataFrame:
+  '''
+    Returns a cleaned geopandas df of the input data.
+    Note: Input data is assumed to have been passed through gpd.read_file() beforehand.
+
+    Parameters:
+        data (GeoDataFrame):
+            The census data to be analyzed with piccard.
+
+        year (str):
+            The year that the census data was collected.
+
+        id (str):
+            The name of the unique identifier that will be used to distinguish geographical areas.
+    
+    Returns:
+        GeoDataFrame: the cleaned data
+  '''
+  process_data = data.copy()
+
+  #Suppressing CRS warning associated with .buffer()
+  with warnings.catch_warnings():
+      warnings.simplefilter(action='ignore', category=UserWarning)
+      process_data['geometry'] = (process_data.to_crs('EPSG:4246').geometry
+                                  .buffer(-0.000001))
+      process_data['area' + '_' + year] = process_data.area
+  process_data[id] = year + '_' + process_data[id]
+
+  return process_data
+
+
+def create_network(
+    census_dfs: List[gpd.GeoDataFrame], 
+    years: List[str], 
+    id: str, 
+    threshold: Optional[float] = 0.05
+) -> nx.Graph:
+  '''
+  Creates a network representation of the temporal connections present in `census_dfs` over `years` 
+  when each yearly geographic area has at most `threshold` percentage of overlap with its 
+  corresponding area(s) in the next year. Represents geographical areas as nodes, and temporal connections
+  as edges.
+
+  Parameters:
+      census_dfs (List[gpd.GeoDataFrame]):
+          A list of GeoDataFrames containing the census data to be turned into a network.
+
+      years (List[str]):
+          A list of years present in census_dfs over which the network representation will be created.
+          Data from years not present in years will be ignored.
+      
+      id (str):
+          The name of the unique identifier that will be used to distinguish geographical areas.
+
+      threshold (float | None):
+          The percentage of overlap (divided by 100)
+          that geographic areas must meet or exceed in order to have a connection.
+          Default is 0.05, or 5 percent.    
+
+  Returns:
+      nx.Graph: The networkx graph containing the nodes (geographical areas) and edges (geographical overlap)
+          created in the new network representation.
+
+  '''
+  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  contained_cts = ct_containment(preprocessed_dfs, years)
+
+  nodes = get_nodes(contained_cts, id, threshold)
+  attributes = get_attributes(nodes, census_dfs, years, id)
+
+  G = nx.from_pandas_edgelist(nodes, f'{id}_1', f'{id}_2')
+  nx.set_node_attributes(G, attributes.set_index(id).to_dict('index'))
+
+  return G
+
+
+def create_network_table(
+    census_dfs: List[gpd.GeoDataFrame], 
+    years: List[str], 
+    id: str, 
+    threshold: Optional[float] = 0.05
+) -> pd.DataFrame:
+  '''
+  Creates a pandas DataFrame showing the network representation of the census data in census_dfs. 
+  Each feature present in the data is a column, and each possible path through the network is a row.
+
+  Parameters:
+      census_dfs (List[gpd.GeoDataFrame]):
+          A list of GeoDataFrames containing the census data to be turned into a network.
+
+      years (List[str]):
+          A list of years present in census_dfs over which the network representation will be created.
+          Data from years not present in years will be ignored.
+      
+      id (str):
+          The name of the unique identifier that will be used to distinguish geographical areas.
+
+      threshold (float | None):
+          The percentage of overlap (divided by 100)
+          that geographic areas must meet or exceed in order to have a connection.
+          Default is 0.05, or 5 percent.    
+
+  Returns:
+      pd.DataFrame: the table.
+  '''
+  num_years = len(years)
+  num_joins = math.ceil(num_years/2)
+  final_cols = [id + '_' + col_name for col_name in years]
+  network_table = pd.DataFrame()
+  drop_cols = final_cols[1:]
+
+  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  contained_cts = ct_containment(preprocessed_dfs, years)
+  nodes = get_nodes(contained_cts, id, threshold)
+
+  #all_paths returns a three item tuple
+  all_paths = find_all_paths(nodes, num_joins, id)
+  all_paths_df = all_paths[0]
+  left_cols = all_paths[1]
+  # right_cols = all_paths[2]
+
+  #Dividing all network paths into full paths and partial paths
+  na_df = all_paths_df[all_paths_df.isnull().any(axis=1)]
+  no_na_df = all_paths_df[~all_paths_df.isnull().any(axis=1)]
+
+  full_paths = find_full_paths(no_na_df, final_cols)
+  full_paths_list = full_paths.to_numpy().flatten()
+
+  partial_paths = find_partial_paths(na_df, years, left_cols, final_cols, full_paths_list)
+
+  network_table = pd.concat([full_paths, partial_paths])
+  network_table = network_table[final_cols]
+  network_table = network_table.T.drop_duplicates().T
+  network_table = network_table.drop_duplicates(subset=drop_cols, keep='last')
+  network_table.sort_values(by=final_cols[0], ignore_index=True)
+
+  attributes = get_attributes(nodes, census_dfs, years, id)
+  final_table = attach_attributes(network_table, attributes, years, final_cols, id)
+
+  #Formatting final table columns
+  for i in range(len(final_cols)):
+      col = str(final_cols[i])
+      popped = final_table.pop(col)
+      final_table.insert(i, popped.name, popped)
+  final_table.columns= final_table.columns.str.lower()
+
+  return final_table
+
+
 # Clustering
 
 def clustering_prep(
-    network_table:pd.DataFrame, 
-    id:str, 
-    cols:Optional[list[str]]=[]
+    network_table: pd.DataFrame, 
+    id: str, 
+    cols: Optional[list[str]]=[]
 ) -> tuple[np.ndarray[np.float64], dict[str, Any]]:
     '''
     Converts a piccard network table into a 3d numpy array of all possible paths and their corresponding
@@ -36,15 +192,15 @@ def clustering_prep(
         
         id (str): 
             The same id inputted into pc.create_network_table().
-        
-    Optional Parameters:   
+ 
         cols (list[str]): A list of the names of network table columns that should be considered in
             the clustering algorithm. If none, every numerical feature will be considered. Leaving it none is
             not recommended as many numerical features, such as network level, have little bearing on the data.
 
     Returns:
-        a tuple of a 3d numpy array and a corresponding dictionary of labels showing
-        the shape of the array.
+        (tuple[np.ndarray[np.float64], dict[str, Any]]):
+            a tuple of a 3d numpy array and a corresponding dictionary of labels showing
+            the shape of the array.
     '''
     # default to considering all features
     if cols == []:
@@ -96,14 +252,14 @@ def clustering_prep(
 
 
 def cluster(
-    network_table:pd.DataFrame, 
-    G:nx.Graph, 
-    id:str, 
-    num_clusters:int, 
-    algo:Optional[str]='greedy', 
-    scheme:Optional[str]='z1c1', 
-    arr:Optional[np.ndarray[np.float64]]=None, 
-    label_dict:Optional[dict[str, Any]]=None
+    network_table: pd.DataFrame, 
+    G: nx.Graph, 
+    id: str, 
+    num_clusters: int, 
+    algo: Optional[str]='greedy', 
+    scheme: Optional[str]='z1c1', 
+    arr: Optional[np.ndarray[np.float64]]=None, 
+    label_dict: Optional[dict[str, Any]]=None
 ) -> Union[OptTSCluster, GreedyTSCluster]:
     '''
     Runs one of tscluster's clustering algorithms (default is fully dynamic clustering or 'z1c1')
@@ -128,8 +284,7 @@ def cluster(
         num_clusters (int): 
             The number of clusters that the algorithm will find.
 
-    Optional Parameters:
-        algo (str): 
+        algo (str | None): 
             The algorithm that tscluster will use, either 'greedy' (default) or 'opt'.
             'greedy' runs GreedyTSCluster, which is a faster and easier, but less accurate, method than OptTSCluster. 
             Since it doesn't require a special academic licence, we recommend 'greedy' for any non-academic users.
@@ -137,20 +292,21 @@ def cluster(
             licence to run the clustering algorithm. More information about obtaining an academic licence can be found
             here: https://www.gurobi.com/academia/academic-program-and-licenses/
         
-        scheme (str): 
+        scheme (str | None): 
             the clustering scheme. See the first paragraph for more information. Default is 'z1c1'.
 
-        arr (np.ndarray[np.float64]): 
+        arr (np.ndarray[np.float64] | None): 
             the array of data to be clustered. If none, arr and label_dict will be generated by running
             pc.clustering_prep() with the default columns. See the pc.clustering_prep() documentation for why we DO NOT
             recommend leaving this blank.
         
-        label_dict (dict[str, Any]): 
+        label_dict (dict[str, Any] | None): 
             the label dictionary corresponding to the data array. See 'arr'.
 
     Returns:
-        an OptTSCluster or GreedyTSCluster object with useful labels, cluster assignments, etc 
-        for future visualizations.
+        (OptTSCluster | GreedyTSCluster): 
+            an OptTSCluster or GreedyTSCluster object with useful labels, cluster assignments, etc 
+            for future visualizations.
     '''
     # Get the data into the correct format. See the documentation for clustering_prep
     if arr is None and label_dict is None:
@@ -214,6 +370,201 @@ def cluster(
 
 # Plot & Visuals
 
+def plot_subnetwork(
+    network_table: pd.DataFrame, 
+    G: nx.Graph, 
+    years: Optional[List[str]] = None,
+    paths_to_show: Optional[List[int]] = None,
+    ids_to_show: Optional[List[str]] = None,
+    num_to_sample: Optional[int] = 4
+) -> go.Figure:
+    """
+    Draws a subgraph of the network representation. If neither a specific list of ids to show nor a specific
+    list of paths to show are given, picks num_to_sample random nodes from the first census year in the data
+    and plots a subnetwork of their paths.
+    Hovering over each node shows the paths the node is part of.
+
+    Parameters:
+        network_table (pd.DataFrame):
+            The result of pc.create_network_table().
+        
+        G (nx.Graph):
+            The result of pc.create_network().
+
+        years (List[str] | None):
+            A list of years to show in the subnetwork. Default is all census years present in the data.
+
+        paths_to_show (List[int] | None):
+            A list of paths (numbered according to their position in network_table) whose points 
+            will be plotted in the subnetwork.
+
+        ids_to_show (List[str] | None):
+            A list of ids (use the same id you used when creating the graph and network table) that
+            will be plotted in the subnetwork. If both paths_to_show and ids_to_show are given, the function
+            will only consider ids_to_show.
+
+        num_to_sample (int | None):
+            The number of random nodes to plot the paths of in the subnetwork. Default is 4. 
+            Note: A large num_to_sample value may result in an unorganized and hard-to-read visualization.
+    
+    Returns:
+        go.Figure: 
+            The interactive subnetwork plot.
+    """
+    # create valid list of years
+    all_years = sorted(list({int(year[0][:4]) for year in G.nodes(data=True)}))
+    if years is None:
+        years = all_years
+    else:
+        years = [year for year in years if int(year) in all_years]
+        if len(years) == 0:
+            years = all_years
+    all_years = [str(year) for year in all_years]
+    years = [str(year) for year in years]
+
+    # organize node names by year and network table path number
+    paths_for_each_year = [list(network_table[network_table.columns[i]]) for i in range(len(years))]
+
+    # prepare nodes to be graphed
+    sample_nodes = []
+    sample_nodes_iteration = []
+    # get nodes by id
+    if ids_to_show is not None:
+        for year in years:
+            for id in ids_to_show:
+                sample_nodes.append(f'{year}_{id}')
+    # get nodes by network table path
+    elif paths_to_show is not None:
+        for year in years:
+            year_index = all_years.index(year)
+            for i in paths_to_show:
+                sample_nodes.append(paths_for_each_year[year_index][i])
+    # get nodes by random sample
+    else:
+        year_nodes = [node for node in list(G.nodes(data=True)) if node[0][:4] == years[0]]
+        for _ in range(num_to_sample):
+            rand = random.randrange(len(year_nodes))
+            sample_nodes.append(year_nodes[rand][0])
+            sample_nodes_iteration.append(year_nodes[rand])
+        for node in list(G.nodes(data=True)):
+            if any([G.has_edge(node[0], sample_node[0]) for sample_node in sample_nodes_iteration]):
+                sample_nodes.append(node[0])
+                sample_nodes_iteration.append(node)
+
+    # create the graph
+    subgraph = G.subgraph(sample_nodes)
+    pos = nx.multipartite_layout(subgraph, subset_key='network_level')
+
+    edge_x = []
+    edge_y = []
+    for edge in subgraph.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
+
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=1, color='gray'),
+        hoverinfo='none',
+        mode='lines'
+    )
+
+    # customize node information
+    node_x = []
+    node_y = []
+    text = []
+    title_text = []
+    for node in subgraph.nodes():
+        paths = ''
+        for year in years:
+            year_index = all_years.index(year)
+            for i in range(len(paths_for_each_year[year_index])):
+                if paths_for_each_year[year_index][i] == node:
+                    paths = paths + f'Path {i}, '
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        text.append(f'ID: {node}    Paths: {paths[:-2]}')
+        title_text.append(node)
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        text=title_text,
+        textposition='top center',
+        hoverinfo='text',
+        hovertext=text,
+        marker=dict(
+            showscale=False,
+            color='orange',
+            size=10,
+            line=dict(width=2)
+        )
+    )
+
+    fig = go.Figure(data=[edge_trace, node_trace],
+                    layout=go.Layout(
+                        title='Subnetwork',
+                        showlegend=False,
+                        hovermode='closest',
+                        margin=dict(b=30,l=30,r=30,t=80),
+                        xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False)
+                    ))
+    return fig
+
+
+def plot_num_areas(
+    network_table: pd.DataFrame, 
+    years: Optional[List[str]] = None,
+) -> go.Figure:
+    '''
+    Plots the number of geographical areas across a subset of census years in the data.
+
+    Parameters:
+        network_table (pd.DataFrame):
+            The result of pc.create_network_table().
+
+        years (List[str] | None):
+            A list of years to show in the subnetwork. Default is all census years present in the data.
+
+    Returns:
+        go.Figure:
+            The plot of the number of geographical areas.
+    '''
+    id_label = network_table.columns[0][:-5]
+    if years is None:
+        year_cols = [col for col in network_table.columns.to_list() if id_label in col]
+        years = sorted(list({col[-4:] for col in year_cols}))
+
+    ct_per_year = []
+    num_years = len(years)
+    for i in range(num_years):
+        ids_list = list(network_table[network_table.columns[i]])
+        ct_per_year.append(len({id for id in ids_list}))
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=ct_per_year,
+        mode='lines+markers',
+        line=dict(color='royalblue'),
+        marker=dict(size=8),
+        name=f'Number of {id_label}s'
+    ))
+
+    fig.update_layout(
+        title=f'Number of {id_label}s from {years[0]} to {years[num_years - 1]}',
+        xaxis_title='Year',
+        yaxis_title=f'Number of {id_label}s',
+        width=700,
+        height=500,
+    )
+
+    return fig
+
+
 def plot_clusters_scatter(
     network_table: pd.DataFrame,
     arr: np.ndarray[np.float64],
@@ -223,11 +574,11 @@ def plot_clusters_scatter(
     cluster_colours: Optional[dict[int, str]] = None,
     dynamic_paths_only: Optional[bool] = True,
     paths_to_show: Optional[List[int]] = None,
+    ids_to_show: Optional[List[str]] = None,
     clusters_to_show: Optional[List[int]] = None, 
     clusters_to_exclude: Optional[List[int]] = [],
     figsize: Optional[Tuple[float, float]] = (700, 500),
     cluster_labels: Optional[List[str]] = None,
-    hover_labels: Optional[bool] = True,
 ) -> List[go.Figure]:
     '''
     Creates a plotly scatterplot for each variable used in clustering with each timestep 
@@ -255,44 +606,44 @@ def plot_clusters_scatter(
         
         tsc (Union[OptTSCluster, GreedyTSCluster]): 
             The result of pc.cluster().
-    
-    Optional Parameters:
-        years (List[str]): 
+
+        years (List[str] | None): 
             The years displayed on the map. Default is all years in the network table.
 
-        cluster_colours (dict[int, str]):
+        cluster_colours (dict[int, str] | None):
             A dict mapping cluster numbers to their corresponding colours. If None, plotly's default
             colour map will be used. If a cluster number is not part of the dict, plotly's default
             colour map will be used for that cluster.
 
-        dynamic_paths_only (bool): 
+        dynamic_paths_only (bool | None): 
             A boolean indicating whether to only plot dynamic entities (entities whose cluster
             assignment has changed over time). Default is true.
 
-        paths_to_show (List[int]): 
+        paths_to_show (List[int] | None): 
             A list of paths (numbered according to their position in network_table) whose points 
             will be displayed on the map. Default is every path.
+
+        ids_to_show (List[str] | None):
+            A list of ids (use the same id you used when creating the graph and network table) whose points
+            will be displayed on the map. Default is every id.
         
-        clusters_to_show (List[int]): 
+        clusters_to_show (List[int] | None): 
             A list of the clusters whose points will be displayed on the map. Default is every cluster.
 
-        clusters_to_exclude (List[int]): 
+        clusters_to_exclude (List[int] | None): 
             A list of the clusters whose points will NOT be displayed on the map. Default is
             an empty list.
         
-        figsize (Tuple[float, float]): 
+        figsize (Tuple[float, float] | None): 
             A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
         
-        cluster_labels (List[str]): 
+        cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
-        hover_labels (bool): 
-            A boolean indicating whether you can see the x-value, y-value, and path number of
-            each point on the plot if you hover your cursor over the point. Default is true.
-
     Returns:
-        a list of plotly.graph_objects.Figure (you cannot show the whole list; rather, iterate through 
-        the list and show each figure)
+        (List[go.Figure]):
+            a list of plotly.graph_objects.Figure (you cannot show the whole list; rather, iterate through 
+            the list and show each figure)
     '''
 
     # get necessary data from tsc
@@ -313,7 +664,7 @@ def plot_clusters_scatter(
 
     # set default values and colours      
     if paths_to_show is None:
-        paths_to_show = list(range(arr.shape[1]))  # show all
+        paths_to_show = list(range(arr.shape[1])) 
     if clusters_to_show is None:
         clusters_to_show = list(range(K))
     if cluster_labels is None:
@@ -344,6 +695,11 @@ def plot_clusters_scatter(
         if any(int(c) in clusters_to_show for c in new_network_table.iloc[i][-len(label_dict['T']):])
         and all(int(c) not in clusters_to_exclude for c in new_network_table.iloc[i][-len(label_dict['T']):])
     ]
+    if ids_to_show is not None:
+        paths_to_show = [
+        i for i in paths_to_show
+        if any(c in ids_to_show for c in [network_table.iloc[i][label_dict['T'].index(j)] for j in years])
+        ]
     if dynamic_paths_only:
         dynamic_entities = set(tsc.get_dynamic_entities()[0])
         paths_to_show = [i for i in paths_to_show if i in dynamic_entities]
@@ -353,15 +709,27 @@ def plot_clusters_scatter(
     for f in range(F):
         fig = go.Figure()
         used_clusters = set()
+        used_paths = {}
         # iterate through each path for the given feature
         for i in paths_to_show:
-            mode = 'lines+markers' if hover_labels else 'lines'
+            x = years
+            y = arr[:, i, f]
+            
+            # Create hover data
+            path_ids = [network_table.iloc[i][label_dict['T'].index(j)] for j in years]
+            for id in path_ids:
+                if id not in used_paths:
+                    used_paths[id] = [i]
+                else:
+                    used_paths[id].append(i)
+            path_ids = [f'ID: {id}  Paths: {[path for path in used_paths[id]]}' for id in path_ids]
+
             # plot lines indicating values
             fig.add_trace(
                 go.Scatter(
-                    x=years,
-                    y=arr[:, i, f],
-                    mode=mode,
+                    x=x,
+                    y=y,
+                    mode='lines+markers',
                     line=dict(color='black', dash='dot'),
                     showlegend=False
                 )
@@ -371,18 +739,20 @@ def plot_clusters_scatter(
             used_clusters.add(int(label_i))
             fig.add_trace(
                 go.Scatter(
-                    x=years,
-                    y=arr[:, i, f],
+                    x=x,
+                    y=y,
                     mode='markers',
                     marker=dict(color=colors[int(label_i)], size=6),
                     name=f"Path {i}",
+                    hoverinfo='text',
+                    hovertext=path_ids,
                     showlegend=False
                 )
             )
         # plot cluster centres
         for j in range(K):
             if j in used_clusters:
-                mode = 'lines+markers' if hover_labels else 'lines'
+                mode = 'lines+markers'
                 fig.add_trace(
                     go.Scatter(
                         x=years,
@@ -426,33 +796,33 @@ def plot_clusters_parallelcats(
     Parameters:
         network_table (pd.DataFrame):
             A DataFrame containing the data. Expected to include one column per year
-            with names in the format <feature_name>_<year>, e.g., 'cluster_assignment_2016'. (This
+            with names in the format cluster_assignment_(year), e.g., 'cluster_assignment_2016'. (This
             will automatically be done if you have already run pc.cluster())
 
-    Optional Parameters:
-        years (List[str]):
+        years (List[str] | None):
             A list of strings representing the time points to include, such as ['2011', '2016', '2021'].
             Default is every year in the network table.
 
-        cluster_colours (dict[int, str]):
+        cluster_colours (dict[int, str] | None):
             A dict mapping cluster numbers to their corresponding colours. If None, plotly's default
             colour map will be used. If a cluster number is not part of the dict, plotly's default
             colour map will be used for that cluster.
         
-        colour_index_year (str):
+        colour_index_year (str | None):
             The year that will be used to determine the colours of the parallel plot. For example, if you chose
             2011 as the colour index year, every cluster in the 2011 dimension would have a colour assigned to it,
             and then the paths into and out of these clusters would be shown in those colours. Default is the
             first year in the network table, and if an invalid input is given, the default will be used.
         
-        cluster_labels (List[str]): 
+        cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
-        figsize (Tuple[float, float]): 
+        figsize (Tuple[float, float] | None): 
             A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
 
     Returns:
-        plotly.graph_objects.Figure: The interactive map
+        plotly.graph_objects.Figure: 
+            The interactive map
     """
     # create a list of valid columns across years
     columns = []
@@ -539,28 +909,28 @@ def plot_clusters_area(
             with names in the format <feature_name>_<year>, e.g., 'cluster_assignment_2016'. (This
             will automatically be done if you have already run pc.cluster())
 
-    Optional Parameters:
-        years (List[str]):
+        years (List[str] | None):
             A list of strings representing the time points to include, such as ['2011', '2016', '2021'].
             Default is every year in the network table.
 
-        cluster_colours (dict[int, str]):
+        cluster_colours (dict[int, str] | None):
             A dict mapping cluster numbers to their corresponding colours. If None, plotly's default
             colour map will be used. If a cluster number is not part of the dict, plotly's default
             colour map will be used for that cluster.
         
-        cluster_labels (List[str]): 
+        cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
-        figsize (Tuple[float, float]): 
+        figsize (Tuple[float, float] | None): 
             A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
 
-        stacked (bool):
+        stacked (bool | None):
             Whether to show the area plot as a stacked plot, with all the areas on top of each other. If False,
             shows the area plot as a regular line graph. Default is True.
 
     Returns:
-        plotly.graph_objects.Figure: The interactive map
+        plotly.graph_objects.Figure: 
+            The interactive map
     """
 
     # auto-detect year columns if not provided
@@ -633,6 +1003,7 @@ def plot_clusters_area(
 
 def plot_clusters_map(
     year: str,
+    id: Optional[str] = 'geouid',
     cluster_colours: Optional[dict[int, str]] = None,
     label_dict: Optional[dict[str, Any]] = None,
     cluster_labels: Optional[List[str]] = None,
@@ -642,7 +1013,7 @@ def plot_clusters_map(
     figsize: Optional[Tuple[float, float]] = (700, 500),
 ) -> px.choropleth:
     """
-    Plot cluster assignments in their associated geographical regions for a specific year using a GeoDataFrame.
+    Plots cluster assignments in their associated geographical regions for a specific year using a GeoDataFrame.
     To properly load the geographical data, the user must provide AT LEAST ONE of the following:
     1. geofile_path AND network_table
     2. gdf
@@ -650,35 +1021,38 @@ def plot_clusters_map(
     Parameters:
         year (str):
             Year to visualize (used in column name)
-    
-    Optional Parameters:
-        cluster_colours (dict[int, str]):
+
+        id (str):
+            Unique identifier for the geographical region and year (used in hover data). Default is 'geouid'.
+
+        cluster_colours (dict[int, str] | None):
             A dict mapping cluster numbers to their corresponding colours. If None, plotly's default
             colour map will be used. If a cluster number is not part of the dict, plotly's default
             colour map will be used for that cluster.
 
-        label_dict(dict[str, Any]):
+        label_dict(dict[str, Any] | None):
             The label dictionary from pc.clustering_prep() that you used in pc.cluster() or a custom 
             label dictionary. Used to determine what data will be shown when you hover over each geographical
             region. If None, only the index (path number) will be shown.
 
-        cluster_labels (List[str]): 
+        cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
-        geofile_path (str):
+        geofile_path (str | None):
             Path to geographical data file if gdf is not passed
 
-        network_table (pd.DataFrame):
+        network_table (pd.DataFrame | None):
             Network table to be merged with GeoJSON
 
-        gdf (GeoDataFrame):
+        gdf (GeoDataFrame | None):
             Pre-joined GeoDataFrame (recommended for advanced users)
 
-        figsize (Tuple[float, float]):
+        figsize (Tuple[float, float] | None):
             A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
 
     Returns:
-        plotly.express.choropleth: The interactive choropleth map
+        plotly.express.choropleth: 
+            The interactive choropleth map
     """
     # Load and merge geodata if not provided
     if gdf is None:
@@ -700,8 +1074,9 @@ def plot_clusters_map(
         gdf[cluster_col] = gdf[cluster_col].astype(str)
         color_col = cluster_col
 
-    # set hover data based on label_dict
+    # create hover data
     hover_data = {}
+    hover_data[f'{id}_{year}'] = True
     if cluster_labels:
         hover_data['cluster_name'] = False
     if label_dict:
@@ -727,6 +1102,7 @@ def plot_clusters_map(
         else:
             # ensure string keys
             cluster_colours = {str(k): v for k, v in cluster_colours.items()}
+    
 
     # Convert geometry to GeoJSON
     gdf = gdf.to_crs(epsg=4326)  # Ensure proper projection for web mapping
@@ -758,10 +1134,256 @@ def plot_clusters_map(
 
 # Helpers
 
+def ct_containment(preprocessed_dfs, years):
+  '''
+  Returns a GeoDataFrame with census tracts which are contained
+  within a census tract from the following census
+  '''
+  num_years = len(years)
+  contained_tracts = []
+
+  for i in range(num_years-1):
+      #Getting CTs which are contained within a previous year's CT
+      contained_df = gpd.overlay(preprocessed_dfs[i], preprocessed_dfs[i+1],
+                                  how='intersection')
+      with warnings.catch_warnings():
+          warnings.simplefilter(action='ignore', category=UserWarning)
+
+          contained_df['area_intersection'] = contained_df.area
+          #Calculating the percentage of the overlapping area between the 2 years
+          pct_col = 'pct_' + years[i+1] + '_of_' + years[i]
+          contained_df[pct_col] = (contained_df['area_intersection'] /
+                                    contained_df[['area_'+years[i],
+                                                  'area_'+years[i+1]]].min(axis=1))
+      contained_tracts.append(contained_df)
+  return contained_tracts
+
+
+def get_nodes(contained_tracts_df, id, threshold=0.05):
+  '''
+  Returns a GeoDataFrame with the graph connections between two census tracts
+  of different years. Each row corresponds to one edge in the final network.
+  '''
+  nodes = gpd.GeoDataFrame()
+  id_cols = [f'{id}_1', f'{id}_2']
+
+  #Aggregating overlapped percentage area for all unique CTs
+  for i in range(len(contained_tracts_df)):
+      pct_col = contained_tracts_df[i].iloc[:, -1].name
+      year_pct = (contained_tracts_df[i]
+                  .groupby(id_cols)
+                  .agg({f'{pct_col}': 'sum'})
+                  .reset_index()
+                  )
+
+      #Selecting CTs with an overlapped area above user's threshold
+      connected_cts = year_pct[year_pct[pct_col] >= threshold][id_cols]
+      nodes = pd.concat([nodes, connected_cts], axis=0, ignore_index=True)
+
+  return nodes
+
+
+def assign_node_level(row, years, id):
+  """
+  Assigns the level of a node in the network based on its relative year in the
+  network
+  Example: All 2021 nodes are in level 3 in a graph with years 2011, 2016, 2021
+  """
+  for i in range(len(years)):
+    if row[id].startswith(str(years[i])):
+      return i+1
+    
+
+def get_attributes(nodes, census_dfs, years, id):
+  '''
+  Returns all the attributes in the original data corresponding to the network
+  nodes
+  '''
+  #Condensing nodes into single column df
+  single_nodes = pd.concat([nodes[col] for col in nodes]).reset_index(drop=True)
+  single_nodes_df = pd.DataFrame({id: single_nodes})
+  attr = []
+
+  for i in range(len(census_dfs)):
+      #Adding year as a prefix for the merge
+      curr_df_id = census_dfs[i].loc[:, id]
+      curr_df_id = years[i] + '_' + curr_df_id
+
+      #Removing geometry column in attributes for the final table
+      year_attr = census_dfs[i].loc[:, (census_dfs[i].columns != 'geometry')].copy()
+      year_attr[id] = curr_df_id
+      year_attr = pd.merge(single_nodes_df, year_attr, on=id, how='right')
+
+      attr.append(year_attr)
+  all_attr = (pd.concat(attr)).drop_duplicates(subset=id)
+  all_attr = all_attr[all_attr[id].notna()]
+
+  #Assigning each node its level in the network (used for mainly drawing)
+  all_attr['network_level'] = all_attr.apply(lambda x: assign_node_level(x, years, id), axis=1)
+  return all_attr
+
+
+def find_all_paths(nodes_df, num_joins, id):
+  '''
+  Return all possible paths present in the input data.
+  Note: The resulting dataframe is not organized and does contain
+        duplicate entries in both the rows and columns.
+  '''
+  left_cols = [f'{id}_1_x', f'{id}_2_x']
+  right_cols = [f'{id}_1_y', f'{id}_1_x']
+
+  #Merging network nodes num_joins amount of times to ensure all paths are found
+  curr_join = nodes_df.merge(nodes_df, how='left', left_on=f'{id}_1', right_on=f'{id}_2')
+  curr_join = curr_join.sort_values(by=[f'{id}_1_y', f'{id}_2_y'], ignore_index=True)
+
+  if num_joins > 1:
+      for i in range(num_joins - 1):
+          curr_join = curr_join.merge(curr_join, how='left', left_on=left_cols, right_on=right_cols, suffixes=['x', 'y'])
+          #Accounting for the new column names after the merge
+          left_cols = [col_name + 'x' for col_name in left_cols]
+          right_cols = [col_name + 'x' for col_name in right_cols]
+  return (curr_join, left_cols, right_cols)
+
+
+def find_full_paths(full_paths_df, final_cols):
+  '''
+  Return all full paths present in input data.
+  Note: Define a full path as a path in the network where the starting node is
+        from the first input year and the ending node is from the last input year.
+  '''
+  full_paths = pd.DataFrame()
+
+  if (not full_paths_df.empty):
+      full_paths = full_paths_df.T.drop_duplicates().sort_values(by=0).T
+      full_paths.columns = final_cols
+  return full_paths
+
+
+def first_year_partial_paths(all_partial_paths, years, final_cols):
+  '''
+  Return all partial paths only for the first input year.
+  Note: Define a partial path as a path in the network where the starting and
+        ending nodes are of any year (i.e., not a full path).
+  '''
+  num_years = len(years)
+  drop_cols = final_cols[1:]
+
+  #Selecting paths with the starting node as the first year
+  mask = all_partial_paths.iloc[:, 0].str.startswith(years[0] + '_')
+  first_year_partials = all_partial_paths[mask]
+
+  #Checking if df empty or not
+  if len(first_year_partials.index) != 0:
+    #Calculating which year contains the ending node
+    max_partial_year = max(all_partial_paths.T.stack().values)[:4]
+
+    #Appending NaN columns to the end for each year as they don't exist in data
+    if ((max_partial_year >= years[1]) & (max_partial_year != years[-1])):
+        for i in reversed(range((num_years - 1) - max_partial_year)):
+            last_col = len(first_year_partials.columns)
+            first_year_partials.insert(last_col, final_cols[-i], np.nan)
+        first_year_partials.columns = final_cols
+    first_year_partials = first_year_partials.T.drop_duplicates().dropna().T
+    first_year_partials.columns = final_cols
+    return first_year_partials
+  else:
+    empty_df = pd.DataFrame(columns = final_cols)
+    return empty_df
+  
+
+def unique_partial_paths(all_partial_paths, years, left_cols, final_cols):
+  '''
+  Return all unique partial paths between two consecutive input years.
+  Note: Define a partial path as a path in the network where the starting and
+        ending nodes are of any year (i.e., not a full path).
+  '''
+  num_years = len(years)
+  unique_partials = pd.DataFrame()
+
+  for i in range(1, num_years):
+      curr_year = years[i] + '_'
+      prev_year = years[i-1] + '_'
+
+      curr_year_mask = all_partial_paths.iloc[:, 0].str.startswith(curr_year)
+      prev_year_mask = all_partial_paths.iloc[:, 0].str.startswith(prev_year)
+
+      curr_year_partials = all_partial_paths[curr_year_mask]
+      prev_year_partials = all_partial_paths[prev_year_mask]
+
+      curr_year_mask = ~curr_year_partials[left_cols[0]].isin(prev_year_partials)
+      curr_year_unique = curr_year_partials[curr_year_mask]
+      curr_year_unique = curr_year_partials.dropna(axis=1).T.drop_duplicates().T
+
+  #Appending NaN column to the front to account for missing first year
+      for k in range(i):
+          curr_year_unique.insert(0, final_cols[k], np.nan)
+
+  #Appending NaN column to the end to account for missing last year
+      if(not curr_year_unique.empty):
+          curr_year_val = max(curr_year_unique.T.stack().values)[:4]
+          curr_year_index = years.index(curr_year_val)
+
+          if (curr_year_index != years[-1]):
+              for j in range((num_years - 1) - curr_year_index):
+                  last_col = len(curr_year_unique.columns)
+                  curr_year_unique.insert(last_col, final_cols[-j], np.nan)
+
+          curr_year_unique.columns = final_cols
+      unique_partials = pd.concat([unique_partials, curr_year_unique])
+  return unique_partials
+
+
+def find_partial_paths(partial_paths_df, years, left_cols, final_cols, exclude_nodes):
+  '''
+  Return all partial paths present in input data.
+  Note: Define a partial path as a path in the network where the starting and
+        ending nodes are of any year (i.e., not a full path).
+  '''
+
+  all_partial_paths = partial_paths_df.T.drop_duplicates().T
+  all_partial_paths = all_partial_paths[~all_partial_paths[left_cols[0]].isin(exclude_nodes)]
+
+  first_year_partials = first_year_partial_paths(all_partial_paths, years, final_cols)
+  unique_partials = unique_partial_paths(all_partial_paths, years, left_cols, final_cols)
+  all_partials = pd.concat([unique_partials, first_year_partials])
+
+  return all_partials
+
+
+def attach_attributes(network_table, attributes, years, final_cols, id):
+  '''
+  Return network table with attached attributes corresponding to the nodes
+  involved.
+  '''
+  years_df_list = []
+
+  for i in range(len(final_cols)):
+      col = str(final_cols[i])
+
+      #Getting attributes for each year
+      table_col = network_table[col].to_frame().astype(object)
+      curr_year = table_col.merge(attributes, how='left', left_on=col, right_on=id)
+      curr_year = curr_year.drop([id], axis=1)
+
+      #Suppressing warning for str.replace
+      with warnings.catch_warnings():
+          warnings.simplefilter(action='ignore', category=FutureWarning)
+          curr_year = curr_year.apply(lambda x: x.str.replace(r'[0-9]+_', '') if x.dtypes==object else x).reset_index(drop=True)
+
+          #Formatting all columns as 'colname_year'
+          curr_year_cols = [f'{col}_{years[i]}' if col != final_cols[i] and col != f'area_{years[i]}' else col for col in curr_year.columns]
+          curr_year.columns = curr_year_cols
+          years_df_list.append(curr_year)
+
+  #Combining all years dfs into one
+  network_table = (pd.concat(years_df_list, axis=1)).dropna(how='all', axis=1)
+  return network_table
+
+
 def filter_columns(
-    network_table:pd.DataFrame, 
-    years:List[str], 
-    cols:Optional[list[str]]=[]
+    network_table: pd.DataFrame, 
+    years: List[str], 
+    cols: Optional[list[str]]=[]
     ) -> Tuple[List[str], List[str]]:
     '''
     Checks that the list of columns with data to be clustered is valid in the following ways:
@@ -774,15 +1396,15 @@ def filter_columns(
         
         years (List[str]): 
             A list of years considered for clustering.
-        
-    Optional Parameters:   
-        cols (list[str]): A list of the names of network table columns that should be considered in
+          
+        cols (list[str] | None): A list of the names of network table columns that should be considered in
             the clustering algorithm. If none, every numerical feature will be considered. Leaving it none is
             not recommended as many numerical features, such as network level, have little bearing on the data.
     
     Returns:
-        a tuple of the final filtered list of columns and the column labels that will
-        be used for the label dictionary.
+        (Tuple[List[str], List[str]]):
+            a tuple of the final filtered list of columns and the column labels that will
+            be used for the label dictionary.
     '''
     # Only add features that are numerical or nan. the user should have selected accordingly
     # but this is a sanity check
@@ -834,7 +1456,7 @@ def join_geometries(
     network_table: pd.DataFrame,
     year: str,
     geofile_id_col: Optional[str] = "GeoUID",
-    network_table_id_column: Optional[str] = "geouid"
+    network_table_id_col: Optional[str] = "geouid"
 ) -> gpd.GeoDataFrame:
     """
     Joins spatial data from a geographical data file with attribute data from a network table
@@ -856,25 +1478,24 @@ def join_geometries(
 
         year (str):
             The census year to match ID and cluster columns (e.g., '2016').
-    
-    Optional Parameters:
-        geofile_id_col (str):
+
+        geofile_id_col (str | None):
             Column name in the geographical data file that contains the geographic identifier
             (default: 'GeoUID').
 
-        network_table_id_column (str):
+        network_table_id_col (str | None):
             Prefix of the column name in the network_table used for geographic ID matching.
             The function expects a column like 'geouid_2016' if year='2016'.
 
     Returns:
         gpd.GeoDataFrame:
-        A merged GeoDataFrame containing geometry from the GeoJSON file and attribute
-        data (e.g., cluster assignments) from the network table. Only valid, non-empty
-        geometries are retained.
+            A merged GeoDataFrame containing geometry from the GeoJSON file and attribute
+            data (e.g., cluster assignments) from the network table. Only valid, non-empty
+            geometries are retained.
     """
 
     # Validate input column name
-    geoid_col = f"{network_table_id_column}_{year}"
+    geoid_col = f"{network_table_id_col}_{year}"
     if geoid_col not in network_table.columns:
         raise ValueError(f"Expected column '{geoid_col}' not found in network_table.")
 
