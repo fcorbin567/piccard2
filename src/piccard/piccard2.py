@@ -5,6 +5,7 @@ import geopandas as gpd
 import plotly
 import plotly.express as px
 import plotly.graph_objects as go
+import shapely
 from itertools import cycle, islice
 from tscluster.opttscluster import OptTSCluster
 from tscluster.greedytscluster import GreedyTSCluster
@@ -12,6 +13,8 @@ from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
 import pandas as pd # for type annotations
 import networkx as nx # for type annotations
 from typing import Union, Any, List, Tuple, Optional # for type annotations
+
+import time
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -42,12 +45,25 @@ def preprocessing(
   '''
   process_data = data.copy()
 
-  #Suppressing CRS warning associated with .buffer()
+  # Suppressing CRS warning associated with .buffer()
   with warnings.catch_warnings():
       warnings.simplefilter(action='ignore', category=UserWarning)
-      process_data['geometry'] = (process_data.to_crs('EPSG:4246').geometry
-                                  .buffer(-0.000001))
+
+      if process_data.crs != 'EPSG:4246':
+          process_data = process_data.to_crs('EPSG:4246')
+
+      # Only buffer rows where geometry complexity is high
+      def is_complex(g):
+        try:
+            return len(g.exterior.coords) > 500 if g.geom_type == 'Polygon' else False
+        except:
+            return False
+
+      mask = process_data.geometry.apply(is_complex)
+      process_data.loc[mask, 'geometry'] = shapely.buffer(process_data.loc[mask, 'geometry'], -0.000001)
+
       process_data['area' + '_' + year] = process_data.area
+  
   process_data[id] = year + '_' + process_data[id]
 
   return process_data
@@ -86,8 +102,19 @@ def create_network(
           created in the new network representation.
 
   '''
+  start_time = time.time()
+
+  # this takes really long
   preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  prep_time = time.time()
+  prep_diff = prep_time - start_time
+  print(f'Finished preprocessing after {prep_diff}')
+
+  # this takes absurdly long
   contained_cts = ct_containment(preprocessed_dfs, years)
+  contained_time = time.time()
+  contained_diff = contained_time - prep_time
+  print(f'Finished contained cts after {contained_diff}')
 
   nodes = get_nodes(contained_cts, id, threshold)
   attributes = get_attributes(nodes, census_dfs, years, id)
@@ -127,6 +154,8 @@ def create_network_table(
   Returns:
       pd.DataFrame: the table.
   '''
+  start_time = time.time()
+
   num_years = len(years)
   num_joins = math.ceil(num_years/2)
   final_cols = [id + '_' + col_name for col_name in years]
@@ -134,11 +163,26 @@ def create_network_table(
   drop_cols = final_cols[1:]
 
   preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  prep_time = time.time()
+  prep_diff = prep_time - start_time
+  print(f'Finished preprocessing after {prep_diff}')
+
   contained_cts = ct_containment(preprocessed_dfs, years)
+  contained_time = time.time()
+  contained_diff = contained_time - prep_time
+  print(f'Finished contained cts after {contained_diff}')
+
   nodes = get_nodes(contained_cts, id, threshold)
+  get_nodes_time = time.time()
+  get_nodes_diff = get_nodes_time - contained_time
+  print(f'Finished getting nodes after {get_nodes_diff}')
 
   #all_paths returns a three item tuple
   all_paths = find_all_paths(nodes, num_joins, id)
+  all_paths_time = time.time()
+  all_paths_diff = all_paths_time - get_nodes_time
+  print(f'Finished getting all paths after {all_paths_diff}')
+
   all_paths_df = all_paths[0]
   left_cols = all_paths[1]
   # right_cols = all_paths[2]
@@ -148,9 +192,16 @@ def create_network_table(
   no_na_df = all_paths_df[~all_paths_df.isnull().any(axis=1)]
 
   full_paths = find_full_paths(no_na_df, final_cols)
+  full_paths_time = time.time()
+  full_paths_diff = full_paths_time - all_paths_time
+  print(f'Finished getting full paths after {full_paths_diff}')
+
   full_paths_list = full_paths.to_numpy().flatten()
 
   partial_paths = find_partial_paths(na_df, years, left_cols, final_cols, full_paths_list)
+  partial_paths_time = time.time()
+  partial_paths_diff = partial_paths_time - full_paths_time
+  print(f'Finished getting partial paths after {partial_paths_diff}')
 
   network_table = pd.concat([full_paths, partial_paths])
   network_table = network_table[final_cols]
@@ -160,6 +211,9 @@ def create_network_table(
 
   attributes = get_attributes(nodes, census_dfs, years, id)
   final_table = attach_attributes(network_table, attributes, years, final_cols, id)
+  attributes_time = time.time()
+  attributes_diff = attributes_time - partial_paths_time
+  print(f'Finished getting and attaching attributes after {attributes_diff}')
 
   #Formatting final table columns
   for i in range(len(final_cols)):
@@ -1144,6 +1198,7 @@ def ct_containment(preprocessed_dfs, years):
 
   for i in range(num_years-1):
       #Getting CTs which are contained within a previous year's CT
+
       contained_df = gpd.overlay(preprocessed_dfs[i], preprocessed_dfs[i+1],
                                   how='intersection')
       with warnings.catch_warnings():
