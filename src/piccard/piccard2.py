@@ -1185,8 +1185,8 @@ def plot_line_means(
         figsize: Tuple[float, float] = (1200, 600),
 ) -> go.Figure:
     """
-    Creates an interactive line‐chart with one subplot per feature, showing how
-    cluster‐mean values evolve over the selected years.
+    Creates an interactive line chart with one subplot per feature, showing how
+    cluster mean values evolve over the selected years.
 
     Each subplot corresponds to a feature (variable), and each line within it
     tracks a single cluster across time, using a consistent colour per cluster.
