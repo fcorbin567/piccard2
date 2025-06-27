@@ -12,6 +12,7 @@ from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
 import pandas as pd # for type annotations
 import networkx as nx # for type annotations
 from typing import Union, Any, List, Tuple, Optional # for type annotations
+from plotly.subplots import make_subplots
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -1132,6 +1133,382 @@ def plot_clusters_map(
 
     return fig
 
+
+def plot_line_means(
+        cluster_feature_means: pd.DataFrame,
+        years: List[int],
+        selected_features: List[str],
+        cluster_colours: Optional[dict[int, str]] = None,
+        title: str = "Mean Variables by Cluster Over Time",
+        figsize: Tuple[float, float] = (1200, 600),
+) -> go.Figure:
+    """
+    Creates an interactive line‐chart with one subplot per feature, showing how
+    cluster‐mean values evolve over the selected years.
+
+    Each subplot corresponds to a feature (variable), and each line within it
+    tracks a single cluster across time, using a consistent colour per cluster.
+
+    Parameters:
+        cluster_feature_means (pd.DataFrame):
+            The resulted dataframe from cluster_means_by_year function
+
+        years (List[int]):
+            Time points to include (e.g. ['2011','2016','2021']). If None,
+            auto-detected from the second level of the DataFrame’s columns.
+        selected_features (List[str]):
+            Which features (base_cols) to plot
+
+        title (str):
+            Figure title.
+
+        figsize (Tuple[float, float]):
+            Width and height of the overall figure in pixels.
+
+
+    Returns:
+        plotly.graph_objects.Figure:
+            The composed line‐chart with subplots.
+    """
+
+    # 1) Pick a distinct color palette & map clusters → colors
+    clusters = list(cluster_feature_means.index)
+
+    num_clusters = len(years)
+    colors = []
+    if cluster_colours:
+        for i in range(num_clusters):
+            if i in cluster_colours:
+                colors.append(cluster_colours[i])
+            else:
+                colors.append(plotly.colors.qualitative.Plotly[i])
+    else:
+        colors = plotly.colors.qualitative.Plotly
+        if num_clusters > len(colors):
+            colors = list(islice(cycle(colors), num_clusters))
+
+    # 2) Make subplots
+    fig = make_subplots(
+        rows=1,
+        cols=len(selected_features),
+        shared_yaxes=False,
+        subplot_titles=[v.replace('_', ' ').title() for v in selected_features],
+    )
+
+    # 3) Add one trace per cluster per subplot, forcing line+marker colors
+    for col_idx, var in enumerate(selected_features, start=1):
+        df_var = cluster_feature_means[var]
+        x_vals = df_var.columns.astype(int)
+
+        for cluster in clusters:
+            fig.add_trace(
+                go.Scatter(
+                    x=x_vals,
+                    y=df_var.loc[cluster],
+                    mode='lines+markers',
+                    name=f'Cluster {cluster}',
+                    line=dict(color=colors[cluster]),
+                    marker=dict(color=colors[cluster]),
+                    legendgroup=str(cluster),
+                    showlegend=(col_idx == 1)
+                ),
+                row=1,
+                col=col_idx
+            )
+
+        # update axes
+        fig.update_xaxes(
+            title_text=f"Mean {var.replace('_', ' ')}",
+            tickmode="array",
+            tickvals=years,
+            ticktext=[str(y) for y in years],
+            row=1,
+            col=col_idx
+        )
+
+    # 4) Final layout
+    fig.update_layout(
+        title=title,
+        width=figsize[0],
+        height=figsize[1],
+        legend_title_text="Cluster",
+        hovermode="x unified",
+        template="plotly_white",
+        margin=dict(t=80, b=40, l=60, r=20)
+    )
+    return fig
+
+
+def plot_bar_means(
+        cluster_feature_means: pd.DataFrame,
+        years: List[int],
+        selected_features: List[str],
+        cluster_colours: Optional[dict[int, str]] = None,
+        figsize: Tuple[float, float] = (900, 600),
+) -> go.Figure:
+    """
+    Create grouped bar-chart subplots of cluster means for each year.
+
+    For each year in `years`, plots the mean value of each feature in
+    `selected_features` for every cluster. Subplots are arranged in a
+    grid with two columns; colors are assigned per cluster via the
+    provided `cluster_colours` mapping or default Plotly palette.
+
+    Parameters:
+
+        cluster_feature_means : pd.DataFrame
+            The resulted DataFrame from the cluster_means_by_year function
+
+        years : List[int]
+            Years to include as separate subplots
+
+        selected_features : List[str]
+            List of feature names to plot on the x-axis
+
+        cluster_colours : dict[int, str], optional
+            Mapping from cluster label (row index) to a Plotly color string
+            If omitted, uses `plotly.colors.qualitative.Plotly` and cycles if needed
+
+        figsize : Tuple[int, float]
+            Width and height of the full figure in pixels
+
+
+    Returns:
+        go.Figure
+        A Plotly Figure with one subplot per year, each showing grouped
+        bars for clusters across the selected features
+
+    """
+    # 1) determine grid
+    rows = math.ceil(len(years) / 2)
+
+    # 2) prepare color map for clusters
+    clusters = list(cluster_feature_means.index)
+
+    num_clusters = len(years)
+    colors = []
+    if cluster_colours:
+        for i in range(num_clusters):
+            if i in cluster_colours:
+                colors.append(cluster_colours[i])
+            else:
+                colors.append(plotly.colors.qualitative.Plotly[i])
+    else:
+        colors = plotly.colors.qualitative.Plotly
+        if num_clusters > len(colors):
+            colors = list(islice(cycle(colors), num_clusters))
+
+    # 3) build subplot figure
+    subplot_titles = [f"Means by Cluster in {year}" for year in years]
+    fig = make_subplots(
+        rows=rows,
+        cols=2,
+        subplot_titles=subplot_titles,
+        shared_yaxes=False,
+
+    )
+
+    # 4) grab the second level (years) of the MultiIndex
+    lvl1 = cluster_feature_means.columns.get_level_values(1)
+
+    # 5) for each year, slice and add a bar trace per cluster
+    for idx, year in enumerate(years):
+        # compute row/col
+        r = idx // 2 + 1
+        c = idx % 2 + 1
+
+        # build a boolean mask (int or str)
+        if year in lvl1:
+            mask = lvl1 == year
+        else:
+            str_lvl1 = [str(y) for y in lvl1]
+            if str(year) in str_lvl1:
+                mask = [s == str(year) for s in str_lvl1]
+            else:
+                raise KeyError(f"Year {year!r} not found in columns: {sorted(set(lvl1))}")
+
+        # slice out only this year's columns, rename them to selected_features
+        df_year = cluster_feature_means.loc[:, mask].copy()
+        df_year.columns = cluster_feature_means.columns.get_level_values(0)[mask]
+        df_year = df_year[selected_features]
+
+        # plot each cluster as a bar trace
+        for cluster in clusters:
+            fig.add_trace(
+                go.Bar(
+                    x=[v.replace('_', ' ') for v in selected_features],
+                    y=df_year.loc[cluster],
+                    name=f"Cluster {cluster}",
+                    marker_color=colors[cluster],
+                    showlegend=(idx == 0)  # legend only on first subplot
+                ),
+                row=r,
+                col=c
+            )
+
+    # 6) final layout tweaks
+    fig.update_layout(
+        title="Cluster Means by Variable and Year",
+        width=figsize[0],
+        height=figsize[1],
+        bargap=0.2,
+        legend_title_text="Cluster",
+        template="plotly_white"
+    )
+    # tighten subplot margins
+    fig.update_layout(margin=dict(t=80, b=50, l=50, r=20))
+    return fig
+
+
+def radar_chart_multiple_years(
+        cluster_feature_means: pd.DataFrame,
+        years: List[int],
+        selected_cluster: int,
+        selected_features: list,
+        figsize: Tuple[int, int] = (900, 600)
+) -> go.Figure:
+    """
+    Create a radar (polar) chart of selected variables for a given cluster across years
+
+    Parameters:
+    cluster_feature_means : pd.DataFrame
+        The resulted dataframe from cluster_means_by_year function
+
+    years : List[int]
+        Which years to plot
+
+    selected_cluster : int
+        Which clusters to plot
+
+    selected_features : List[str]
+        Which features to include, should be at lease 3
+
+    figsize : (width, height),
+        Size of the figure in pixels
+    """
+
+    # Get the year level of the MultiIndex
+    lvl1 = cluster_feature_means.columns.get_level_values(1)
+    fig = go.Figure()
+
+    for idx, year in enumerate(years):
+        # build mask robustly
+        if year in lvl1:
+            mask = lvl1 == year
+        else:
+            str_lvl1 = [str(y) for y in lvl1]
+            if str(year) in str_lvl1:
+                mask = [s == str(year) for s in str_lvl1]
+            else:
+                raise KeyError(f"Year {year!r} not in columns: {sorted(set(lvl1))}")
+
+        # Slice out just this year's columns and rename to variable names
+        df_year = cluster_feature_means.loc[:, mask].copy()
+        df_year.columns = cluster_feature_means.columns.get_level_values(0)[mask]
+
+        # Reorder and pick only the requested variables
+        df_year = df_year[selected_features]
+
+        # Extract the row for the given cluster
+        result = df_year.iloc[selected_cluster]
+
+        # Add as a polar trace
+        fig.add_trace(go.Scatterpolar(
+            r=result.values,
+            theta=result.index,
+            fill='toself',
+            name=str(year),
+        ))
+
+        fig.update_layout(
+            title=dict(
+                text=f"Cluster {selected_cluster} Yearly Profile",
+                x=0.5, xanchor="center"
+            ),
+            polar=dict(radialaxis=dict(visible=True)),
+            showlegend=True,
+            width=figsize[0],
+            height=figsize[1],
+            template="plotly_white",
+        )
+
+    return fig
+
+
+def radar_chart_multiple_clusters(
+        cluster_feature_means: pd.DataFrame,
+        selected_year: int,
+        selected_features: list,
+        figsize: Tuple[int, int] = (900, 600),
+) -> go.Figure:
+    """
+    Draw a radar chart of the given variables for every cluster in `cluster_feature_means`,
+    all on the same figure, for the specified year
+
+    Parameters:
+    -----------
+    cluster_feature_means : pd.DataFrame
+        The resulted dataframe from cluster_means_by_year function
+
+    selected_year : int
+        Selected year to show its features
+
+    selected_features : list of str
+        Which variables to plot
+
+    figsize : (width, height), default=(900,600)
+        Size of the figure in pixels
+
+    Returns:
+
+    fig : go.Figure
+        The Plotly figure containing one polar trace per cluster.
+    """
+    # Extract the year-level values
+    lvl1 = cluster_feature_means.columns.get_level_values(1)
+
+    # Build boolean mask for matching year
+    if selected_year in lvl1:
+        mask = lvl1 == selected_year
+    else:
+        str_lvl1 = list(map(str, lvl1))
+        if str(selected_year) in str_lvl1:
+            mask = [s == str(selected_year) for s in str_lvl1]
+        else:
+            raise KeyError(f"Year {selected_year!r} not found in columns: {sorted(set(lvl1))}")
+
+    # Slice out this year's columns and rename to variable names
+    df_year = cluster_feature_means.loc[:, mask].copy()
+    df_year.columns = cluster_feature_means.columns.get_level_values(0)[mask]
+
+    # Create the figure
+    fig = go.Figure()
+
+    # Add one trace per cluster
+    for cluster_label in df_year.index:
+        vals = df_year.loc[cluster_label, selected_features]
+        fig.add_trace(go.Scatterpolar(
+            r=vals.values,
+            theta=selected_features,
+            fill='toself',
+            name=f'Cluster {cluster_label}'
+        ))
+
+    # Final layout tweaks
+    fig.update_layout(
+        title=dict(
+            text=f"Cluster Profiles for {selected_year}",
+            x=0.5, xanchor="center", yanchor="top"
+        ),
+        polar=dict(radialaxis=dict(visible=True)),
+        showlegend=True,
+        width=figsize[0],
+        height=figsize[1],
+        template="plotly_white",
+    )
+
+    return fig
+
 # Helpers
 
 def ct_containment(preprocessed_dfs, years):
@@ -1535,6 +1912,6 @@ def cluster_means_by_year(
         )
         dfs[year] = df_year
 
-    means_all = pd.concat(dfs, axis=1)
-    means_all = means_all.swaplevel(0, 1, axis=1).sort_index(axis=1)
-    return means_all
+    cluster_feature_means = pd.concat(dfs, axis=1)
+    cluster_feature_means = cluster_feature_means.swaplevel(0, 1, axis=1).sort_index(axis=1)
+    return cluster_feature_means
