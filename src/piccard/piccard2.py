@@ -73,7 +73,8 @@ def create_network(
     census_dfs: List[gpd.GeoDataFrame], 
     years: List[str], 
     id: str, 
-    threshold: Optional[float] = 0.05
+    threshold: Optional[float] = 0.05,
+    verbose: Optional[bool] = True
 ) -> nx.Graph:
   '''
   Creates a network representation of the temporal connections present in `census_dfs` over `years` 
@@ -96,6 +97,9 @@ def create_network(
           The percentage of overlap (divided by 100)
           that geographic areas must meet or exceed in order to have a connection.
           Default is 0.05, or 5 percent.    
+      
+      verbose (bool | None):
+          Whether to issue print statements about the progress of network creation. Default is true.
 
   Returns:
       nx.Graph: The networkx graph containing the nodes (geographical areas) and edges (geographical overlap)
@@ -103,13 +107,21 @@ def create_network(
 
   '''
   preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  if verbose:
+      print('Preprocessing complete')
   contained_cts = ct_containment(preprocessed_dfs, years)
 
   nodes = get_nodes(contained_cts, id, threshold)
+  if verbose:
+      print('All nodes found')
   attributes = get_attributes(nodes, census_dfs, years, id)
+  if verbose:
+      print('All attributes found')
 
   G = nx.from_pandas_edgelist(nodes, f'{id}_1', f'{id}_2')
   nx.set_node_attributes(G, attributes.set_index(id).to_dict('index'))
+  if verbose:
+      print('Graph created')
 
   return G
 
@@ -118,7 +130,8 @@ def create_network_table(
     census_dfs: List[gpd.GeoDataFrame], 
     years: List[str], 
     id: str, 
-    threshold: Optional[float] = 0.05
+    threshold: Optional[float] = 0.05,
+    verbose: Optional[bool] = True
 ) -> pd.DataFrame:
   '''
   Creates a pandas DataFrame showing the network representation of the census data in census_dfs. 
@@ -140,6 +153,9 @@ def create_network_table(
           that geographic areas must meet or exceed in order to have a connection.
           Default is 0.05, or 5 percent.    
 
+      verbose (bool | None):
+          Whether to issue print statements about the progress of network creation. Default is true.
+
   Returns:
       pd.DataFrame: the table.
   '''
@@ -150,8 +166,12 @@ def create_network_table(
   drop_cols = final_cols[1:]
 
   preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  if verbose:
+      print('Preprocessing complete')
   contained_cts = ct_containment(preprocessed_dfs, years)
   nodes = get_nodes(contained_cts, id, threshold)
+  if verbose:
+      print('All nodes found')
 
   #all_paths returns a three item tuple
   all_paths = find_all_paths(nodes, num_joins, id)
@@ -167,6 +187,8 @@ def create_network_table(
   full_paths_list = full_paths.to_numpy().flatten()
 
   partial_paths = find_partial_paths(na_df, years, left_cols, final_cols, full_paths_list)
+  if verbose:
+      print('All possible paths through the graph found')
 
   network_table = pd.concat([full_paths, partial_paths])
   network_table = network_table[final_cols]
@@ -176,6 +198,8 @@ def create_network_table(
 
   attributes = get_attributes(nodes, census_dfs, years, id)
   final_table = attach_attributes(network_table, attributes, years, final_cols, id)
+  if verbose:
+      print('All attributes found')
 
   #Formatting final table columns
   for i in range(len(final_cols)):
@@ -183,6 +207,8 @@ def create_network_table(
       popped = final_table.pop(col)
       final_table.insert(i, popped.name, popped)
   final_table.columns= final_table.columns.str.lower()
+  if verbose:
+      print('Table created')
 
   return final_table
 
