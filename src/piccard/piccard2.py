@@ -1513,3 +1513,28 @@ def join_geometries(
     merged_gdf = merged_gdf[~merged_gdf.is_empty & merged_gdf.geometry.notnull()]
 
     return merged_gdf
+
+def cluster_means_by_year(
+    network_table: pd.DataFrame,
+    years: list,
+    base_cols: list,
+    cluster_prefix: str = 'cluster_assignment'
+) -> pd.DataFrame:
+    """
+    Compute mean values of base_cols per cluster for each year,
+    and concatenate into a MultiIndex DataFrame (variable, year).
+    """
+    dfs = {}
+    for year in years:
+        col_names = [f'{col}_{year}' for col in base_cols]
+        df_year = (
+            network_table
+            .groupby(f'{cluster_prefix}_{year}')[col_names]
+            .mean()
+            .rename(columns={f'{col}_{year}': col for col in base_cols})
+        )
+        dfs[year] = df_year
+
+    means_all = pd.concat(dfs, axis=1)
+    means_all = means_all.swaplevel(0, 1, axis=1).sort_index(axis=1)
+    return means_all
