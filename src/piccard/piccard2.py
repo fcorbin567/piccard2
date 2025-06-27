@@ -5,6 +5,7 @@ import geopandas as gpd
 import plotly
 import plotly.express as px
 import plotly.graph_objects as go
+import shapely
 from itertools import cycle, islice
 from tscluster.opttscluster import OptTSCluster
 from tscluster.greedytscluster import GreedyTSCluster
@@ -13,6 +14,8 @@ import pandas as pd # for type annotations
 import networkx as nx # for type annotations
 from typing import Union, Any, List, Tuple, Optional # for type annotations
 from plotly.subplots import make_subplots
+
+import time
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -43,12 +46,25 @@ def preprocessing(
   '''
   process_data = data.copy()
 
-  #Suppressing CRS warning associated with .buffer()
+  # Suppressing CRS warning associated with .buffer()
   with warnings.catch_warnings():
       warnings.simplefilter(action='ignore', category=UserWarning)
-      process_data['geometry'] = (process_data.to_crs('EPSG:4246').geometry
-                                  .buffer(-0.000001))
+
+      if process_data.crs != 'EPSG:4246':
+          process_data = process_data.to_crs('EPSG:4246')
+
+      # Only buffer rows where geometry complexity is high
+      def is_complex(g):
+        try:
+            return len(g.exterior.coords) > 500 if g.geom_type == 'Polygon' else False
+        except:
+            return False
+
+      mask = process_data.geometry.apply(is_complex)
+      process_data.loc[mask, 'geometry'] = shapely.buffer(process_data.loc[mask, 'geometry'], -0.000001)
+
       process_data['area' + '_' + year] = process_data.area
+  
   process_data[id] = year + '_' + process_data[id]
 
   return process_data
@@ -58,7 +74,8 @@ def create_network(
     census_dfs: List[gpd.GeoDataFrame], 
     years: List[str], 
     id: str, 
-    threshold: Optional[float] = 0.05
+    threshold: Optional[float] = 0.05,
+    verbose: Optional[bool] = True
 ) -> nx.Graph:
   '''
   Creates a network representation of the temporal connections present in `census_dfs` over `years` 
@@ -81,6 +98,9 @@ def create_network(
           The percentage of overlap (divided by 100)
           that geographic areas must meet or exceed in order to have a connection.
           Default is 0.05, or 5 percent.    
+      
+      verbose (bool | None):
+          Whether to issue print statements about the progress of network creation. Default is true.
 
   Returns:
       nx.Graph: The networkx graph containing the nodes (geographical areas) and edges (geographical overlap)
@@ -88,13 +108,21 @@ def create_network(
 
   '''
   preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  if verbose:
+      print('Preprocessing complete')
   contained_cts = ct_containment(preprocessed_dfs, years)
 
   nodes = get_nodes(contained_cts, id, threshold)
+  if verbose:
+      print('All nodes found')
   attributes = get_attributes(nodes, census_dfs, years, id)
+  if verbose:
+      print('All attributes found')
 
   G = nx.from_pandas_edgelist(nodes, f'{id}_1', f'{id}_2')
   nx.set_node_attributes(G, attributes.set_index(id).to_dict('index'))
+  if verbose:
+      print('Graph created')
 
   return G
 
@@ -103,7 +131,8 @@ def create_network_table(
     census_dfs: List[gpd.GeoDataFrame], 
     years: List[str], 
     id: str, 
-    threshold: Optional[float] = 0.05
+    threshold: Optional[float] = 0.05,
+    verbose: Optional[bool] = True
 ) -> pd.DataFrame:
   '''
   Creates a pandas DataFrame showing the network representation of the census data in census_dfs. 
@@ -125,6 +154,9 @@ def create_network_table(
           that geographic areas must meet or exceed in order to have a connection.
           Default is 0.05, or 5 percent.    
 
+      verbose (bool | None):
+          Whether to issue print statements about the progress of network creation. Default is true.
+
   Returns:
       pd.DataFrame: the table.
   '''
@@ -135,8 +167,12 @@ def create_network_table(
   drop_cols = final_cols[1:]
 
   preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
+  if verbose:
+      print('Preprocessing complete')
   contained_cts = ct_containment(preprocessed_dfs, years)
   nodes = get_nodes(contained_cts, id, threshold)
+  if verbose:
+      print('All nodes found')
 
   #all_paths returns a three item tuple
   all_paths = find_all_paths(nodes, num_joins, id)
@@ -152,6 +188,8 @@ def create_network_table(
   full_paths_list = full_paths.to_numpy().flatten()
 
   partial_paths = find_partial_paths(na_df, years, left_cols, final_cols, full_paths_list)
+  if verbose:
+      print('All possible paths through the graph found')
 
   network_table = pd.concat([full_paths, partial_paths])
   network_table = network_table[final_cols]
@@ -161,6 +199,8 @@ def create_network_table(
 
   attributes = get_attributes(nodes, census_dfs, years, id)
   final_table = attach_attributes(network_table, attributes, years, final_cols, id)
+  if verbose:
+      print('All attributes found')
 
   #Formatting final table columns
   for i in range(len(final_cols)):
@@ -168,6 +208,8 @@ def create_network_table(
       popped = final_table.pop(col)
       final_table.insert(i, popped.name, popped)
   final_table.columns= final_table.columns.str.lower()
+  if verbose:
+      print('Table created')
 
   return final_table
 
@@ -1511,29 +1553,67 @@ def radar_chart_multiple_clusters(
 
 # Helpers
 
-def ct_containment(preprocessed_dfs, years):
-  '''
-  Returns a GeoDataFrame with census tracts which are contained
-  within a census tract from the following census
-  '''
-  num_years = len(years)
-  contained_tracts = []
+def ct_containment(preprocessed_dfs, years, id='GeoUID', threshold=0.05):
+    '''
+    Returns a GeoDataFrame with census tracts which are contained
+    within a census tract from the following census
+    '''
+    num_years = len(years)
+    contained_tracts = []
 
-  for i in range(num_years-1):
-      #Getting CTs which are contained within a previous year's CT
-      contained_df = gpd.overlay(preprocessed_dfs[i], preprocessed_dfs[i+1],
-                                  how='intersection')
-      with warnings.catch_warnings():
-          warnings.simplefilter(action='ignore', category=UserWarning)
+    for i in range(num_years - 1):
+        df1 = preprocessed_dfs[i][[id, f'area_{years[i]}', 'geometry']].copy()
+        df2 = preprocessed_dfs[i + 1][[id, f'area_{years[i + 1]}', 'geometry']].copy()
+        year1, year2 = years[i], years[i + 1]
 
-          contained_df['area_intersection'] = contained_df.area
-          #Calculating the percentage of the overlapping area between the 2 years
-          pct_col = 'pct_' + years[i+1] + '_of_' + years[i]
-          contained_df[pct_col] = (contained_df['area_intersection'] /
-                                    contained_df[['area_'+years[i],
-                                                  'area_'+years[i+1]]].min(axis=1))
-      contained_tracts.append(contained_df)
-  return contained_tracts
+        # Rename and set active geometry for join
+        df1 = df1.rename(columns={id: f'{id}_1'})
+        df1 = gpd.GeoDataFrame(df1, geometry='geometry', crs=preprocessed_dfs[i].crs)
+
+        df2 = df2.rename(columns={id: f'{id}_2', 'geometry': 'geometry_2'})
+        df2 = gpd.GeoDataFrame(df2, geometry='geometry_2', crs=preprocessed_dfs[i + 1].crs)
+
+        # Spatial join: only keeps left geometry
+        joined = gpd.sjoin(df1, df2, predicate='intersects', how='inner')
+
+        # Extract correct original area columns manually
+        area1_col = f'area_{year1}'
+        area2_col = f'area_{year2}'
+
+        # Merge in right-side area and geometry
+        joined = joined.drop(columns=[area2_col], errors='ignore')  # remove any stub if exists
+        joined = joined.merge(
+            df2[[f'{id}_2', area2_col, 'geometry_2']],
+            on=f'{id}_2',
+            how='left'
+        )
+
+        # Compute true intersection geometry
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', category=UserWarning)
+            joined['geometry'] = joined.apply(
+                lambda row: row['geometry'].intersection(row['geometry_2']),
+                axis=1
+            )
+
+        # Set geometry column again for safety
+        joined = gpd.GeoDataFrame(joined, geometry='geometry', crs=preprocessed_dfs[i].crs)
+
+        # Compute intersection area
+        joined['area_intersection'] = joined.geometry.area
+
+        # Compute true % overlap
+        pct_col = f'pct_{year2}_of_{year1}'
+        joined[pct_col] = joined['area_intersection'] / joined[[area1_col, area2_col]].min(axis=1)
+
+        # Filter by threshold
+        joined = joined[joined[pct_col] >= threshold]
+
+        # Return only necessary columns
+        kept = joined[[f'{id}_1', f'{id}_2', f'area_{year1}', f'area_{year2}', 'geometry', 'area_intersection', pct_col]]
+        contained_tracts.append(kept)
+
+    return contained_tracts
 
 
 def get_nodes(contained_tracts_df, id, threshold=0.05):
