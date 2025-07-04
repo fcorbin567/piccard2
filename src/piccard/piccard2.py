@@ -15,8 +15,6 @@ import networkx as nx # for type annotations
 from typing import Union, Any, List, Tuple, Optional # for type annotations
 from plotly.subplots import make_subplots
 
-import time
-
 import warnings
 warnings.filterwarnings('ignore')
 
