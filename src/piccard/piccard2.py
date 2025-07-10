@@ -5,6 +5,7 @@ import geopandas as gpd
 import plotly
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import shapely
 try:
     import swifter
@@ -19,17 +20,19 @@ from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
 import pandas as pd # for type annotations
 import networkx as nx # for type annotations
 from typing import Union, Any, List, Tuple, Optional # for type annotations
-from plotly.subplots import make_subplots
+from pyproj import CRS # for type annotations
+from pyproj.exceptions import CRSError
 
 import warnings
 warnings.filterwarnings('ignore')
 
-# Network Creation
+# Module 1: Network Creation
 
 def preprocessing(
     data: gpd.GeoDataFrame, 
     year: str, 
     id: str,
+    crs: Optional[CRS] = "EPSG:3347",
     verbose: Optional[bool] = True
 ) -> gpd.GeoDataFrame:
     '''
@@ -46,6 +49,11 @@ def preprocessing(
         id (str):
             The name of the unique identifier that will be used to distinguish geographical areas.
 
+        crs (CRS | None):
+            A pythonic Coordinate Reference System manager that will be used to compute areas. Default is
+            EPSG:3347, a consistent, equal-area CRS based on square metres. Can be many formats; see 
+            https://pyproj4.github.io/pyproj/stable/api/crs/crs.html for more information.
+
         verbose (bool | None):
             Whether to issue print statements about the progress of network creation. Default is true.
     
@@ -57,9 +65,11 @@ def preprocessing(
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', category=UserWarning)
 
-        # Reproject to a consistent, equal-area CRS
-        if process_data.crs != 'EPSG:3347':
-            process_data = process_data.to_crs('EPSG:3347')
+        try:
+            if process_data.crs != crs:
+                process_data = process_data.to_crs(crs=crs)
+        except CRSError:
+            raise CRSError(f"{crs} is not a valid CRS")
 
         # Identify complex geometries
         def is_complex(g):
@@ -67,8 +77,9 @@ def preprocessing(
                 return g.geom_type == 'Polygon' and len(g.exterior.coords) > 500
             except:
                 return False
-
-        use_swifter = SWIFTER_AVAILABLE and len(process_data) > 100_000
+        
+        # identify whether to run buffering in parallel
+        use_swifter = SWIFTER_AVAILABLE and len(process_data) > 100_000 # more than 100,000 rows
         complexity_check = (
             process_data.geometry.swifter.apply(is_complex)
             if use_swifter else process_data.geometry.apply(is_complex)
@@ -81,10 +92,8 @@ def preprocessing(
             buffered = shapely.buffer(geom_to_buffer.values, -0.000001)
             process_data.loc[complexity_check, 'geometry'] = buffered
 
-        # Compute area in EPSG:3347 (square meters)
         process_data[f'area_{year}'] = process_data.geometry.area
 
-        # Tag ID with year prefix
         process_data[id] = f"{year}_" + process_data[id].astype(str)
 
     return process_data
@@ -94,6 +103,7 @@ def create_network(
     census_dfs: List[gpd.GeoDataFrame], 
     years: List[str], 
     id: str, 
+    crs: Optional[CRS] = "EPSG:3347",
     threshold: Optional[float] = 0.05,
     verbose: Optional[bool] = True
 ) -> nx.Graph:
@@ -114,6 +124,11 @@ def create_network(
       id (str):
           The name of the unique identifier that will be used to distinguish geographical areas.
 
+      crs (CRS | None):
+            A pythonic Coordinate Reference System manager that will be used to compute areas. Default is
+            EPSG:3347, a consistent, equal-area CRS based on square metres. Can be many formats; see 
+            https://pyproj4.github.io/pyproj/stable/api/crs/crs.html for more information.
+
       threshold (float | None):
           The percentage of overlap (divided by 100)
           that geographic areas must meet or exceed in order to have a connection.
@@ -127,7 +142,7 @@ def create_network(
           created in the new network representation.
 
   '''
-  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id, verbose=verbose) for i in range(len(census_dfs))]
+  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id, crs=crs, verbose=verbose) for i in range(len(census_dfs))]
   if verbose:
       print(f'Preprocessing complete')
   contained_cts = ct_containment(preprocessed_dfs, years, id, threshold, verbose)
@@ -151,6 +166,7 @@ def create_network_table(
     census_dfs: List[gpd.GeoDataFrame], 
     years: List[str], 
     id: str, 
+    crs: Optional[CRS] = "EPSG:3347",
     threshold: Optional[float] = 0.05,
     verbose: Optional[bool] = True
 ) -> pd.DataFrame:
@@ -169,6 +185,11 @@ def create_network_table(
       id (str):
           The name of the unique identifier that will be used to distinguish geographical areas.
 
+      crs (CRS | None):
+            A pythonic Coordinate Reference System manager that will be used to compute areas. Default is
+            EPSG:3347, a consistent, equal-area CRS based on square metres. Can be many formats; see 
+            https://pyproj4.github.io/pyproj/stable/api/crs/crs.html for more information.
+
       threshold (float | None):
           The percentage of overlap (divided by 100)
           that geographic areas must meet or exceed in order to have a connection.
@@ -186,7 +207,7 @@ def create_network_table(
   network_table = pd.DataFrame()
   drop_cols = final_cols[1:]
 
-  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id, verbose) for i in range(len(census_dfs))]
+  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id, crs, verbose) for i in range(len(census_dfs))]
   if verbose:
       print('Preprocessing complete')
   contained_cts = ct_containment(preprocessed_dfs, years, id, threshold, verbose)
@@ -233,7 +254,7 @@ def create_network_table(
   return final_table
 
 
-# Clustering
+# Module 2: Clustering
 
 def clustering_prep(
     network_table: pd.DataFrame, 
@@ -430,7 +451,7 @@ def cluster(
     
     return tsc
 
-# Plot & Visuals
+# Module 3: Visualization
 
 def plot_subnetwork(
     network_table: pd.DataFrame, 
