@@ -6,5 +6,5 @@ docs/__pycache__/
 docs/piccard2/
 census_data.R
 docs/Clustered_network.csv
-
+__pycache__/
 trees/*
