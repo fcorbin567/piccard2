@@ -1,31 +1,52 @@
+# network creation
 import math
-import random
 import numpy as np
 import geopandas as gpd
-import plotly
-import plotly.express as px
-import plotly.graph_objects as go
-from itertools import cycle, islice
+import shapely
+try:
+    import swifter
+    SWIFTER_AVAILABLE = True
+except ImportError:
+    SWIFTER_AVAILABLE = False
+from concurrent.futures import ProcessPoolExecutor
+# clustering
 from tscluster.opttscluster import OptTSCluster
 from tscluster.greedytscluster import GreedyTSCluster
 from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
-import pandas as pd # for type annotations
-import networkx as nx # for type annotations
-from typing import Union, Any, List, Tuple, Optional # for type annotations
+# visualizations
+import random
+import plotly
+import plotly.express as px
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from itertools import cycle, islice
+# type annotations
+import pandas as pd
+import networkx as nx
+from typing import Union, Any, List, Tuple, Optional
+from pyproj import CRS
+from pyproj.exceptions import CRSError
 
 import warnings
 warnings.filterwarnings('ignore')
 
-# Network Creation
+import sys
+import os
+
+sys.path.append(os.path.abspath('../../../ppandas/ppandas'))
+from p_frame import PDataFrame
+
+# Module 1: Network Creation
 
 def preprocessing(
     data: gpd.GeoDataFrame, 
     year: str, 
-    id: str
+    id: str,
+    crs: Optional[CRS] = "EPSG:3347",
+    verbose: Optional[bool] = True
 ) -> gpd.GeoDataFrame:
-  '''
-    Returns a cleaned geopandas df of the input data.
+    '''
+    Returns a cleaned geopandas df of the input data. Uses parallel processing for very large (>100,000 rows) datasets.
     Note: Input data is assumed to have been passed through gpd.read_file() beforehand.
 
     Parameters:
@@ -37,28 +58,64 @@ def preprocessing(
 
         id (str):
             The name of the unique identifier that will be used to distinguish geographical areas.
+
+        crs (CRS | None):
+            A pythonic Coordinate Reference System manager that will be used to compute areas. Default is
+            EPSG:3347, a consistent, equal-area CRS based on square metres. Can be many formats; see 
+            https://pyproj4.github.io/pyproj/stable/api/crs/crs.html for more information.
+
+        verbose (bool | None):
+            Whether to issue print statements about the progress of network creation. Default is true.
     
     Returns:
         GeoDataFrame: the cleaned data
-  '''
-  process_data = data.copy()
+    '''
+    process_data = data.copy()
 
-  #Suppressing CRS warning associated with .buffer()
-  with warnings.catch_warnings():
-      warnings.simplefilter(action='ignore', category=UserWarning)
-      process_data['geometry'] = (process_data.to_crs('EPSG:4246').geometry
-                                  .buffer(-0.000001))
-      process_data['area' + '_' + year] = process_data.area
-  process_data[id] = year + '_' + process_data[id]
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', category=UserWarning)
 
-  return process_data
+        try:
+            if process_data.crs != crs:
+                process_data = process_data.to_crs(crs=crs)
+        except CRSError:
+            raise CRSError(f"{crs} is not a valid CRS")
+
+        # Identify complex geometries
+        def is_complex(g):
+            try:
+                return g.geom_type == 'Polygon' and len(g.exterior.coords) > 500
+            except:
+                return False
+        
+        # identify whether to run buffering in parallel
+        use_swifter = SWIFTER_AVAILABLE and len(process_data) > 100_000 # more than 100,000 rows
+        complexity_check = (
+            process_data.geometry.swifter.apply(is_complex)
+            if use_swifter else process_data.geometry.apply(is_complex)
+        )
+
+        if complexity_check.any():
+            if verbose:
+                print(f"PREPROCESSING: buffering {complexity_check.sum()} complex geometries with shapely.buffer()...")
+            geom_to_buffer = process_data.loc[complexity_check, 'geometry']
+            buffered = shapely.buffer(geom_to_buffer.values, -0.000001)
+            process_data.loc[complexity_check, 'geometry'] = buffered
+
+        process_data[f'area_{year}'] = process_data.geometry.area
+
+        process_data[id] = f"{year}_" + process_data[id].astype(str)
+
+    return process_data 
 
 
 def create_network(
     census_dfs: List[gpd.GeoDataFrame], 
     years: List[str], 
     id: str, 
-    threshold: Optional[float] = 0.05
+    crs: Optional[CRS] = "EPSG:3347",
+    threshold: Optional[float] = 0.05,
+    verbose: Optional[bool] = True
 ) -> nx.Graph:
   '''
   Creates a network representation of the temporal connections present in `census_dfs` over `years` 
@@ -77,24 +134,39 @@ def create_network(
       id (str):
           The name of the unique identifier that will be used to distinguish geographical areas.
 
+      crs (CRS | None):
+            A pythonic Coordinate Reference System manager that will be used to compute areas. Default is
+            EPSG:3347, a consistent, equal-area CRS based on square metres. Can be many formats; see 
+            https://pyproj4.github.io/pyproj/stable/api/crs/crs.html for more information.
+
       threshold (float | None):
           The percentage of overlap (divided by 100)
           that geographic areas must meet or exceed in order to have a connection.
           Default is 0.05, or 5 percent.    
+      
+      verbose (bool | None):
+          Whether to issue print statements about the progress of network creation. Default is true.
 
   Returns:
       nx.Graph: The networkx graph containing the nodes (geographical areas) and edges (geographical overlap)
           created in the new network representation.
 
   '''
-  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
-  contained_cts = ct_containment(preprocessed_dfs, years)
-
+  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id, crs=crs, verbose=verbose) for i in range(len(census_dfs))]
+  if verbose:
+      print(f'Preprocessing complete')
+  contained_cts = ct_containment(preprocessed_dfs, years, id, threshold, verbose)
   nodes = get_nodes(contained_cts, id, threshold)
+  if verbose:
+      print('All nodes found')
   attributes = get_attributes(nodes, census_dfs, years, id)
+  if verbose:
+      print('All attributes found')
 
   G = nx.from_pandas_edgelist(nodes, f'{id}_1', f'{id}_2')
   nx.set_node_attributes(G, attributes.set_index(id).to_dict('index'))
+  if verbose:
+      print('Graph created')
 
   return G
 
@@ -103,7 +175,9 @@ def create_network_table(
     census_dfs: List[gpd.GeoDataFrame], 
     years: List[str], 
     id: str, 
-    threshold: Optional[float] = 0.05
+    crs: Optional[CRS] = "EPSG:3347",
+    threshold: Optional[float] = 0.05,
+    verbose: Optional[bool] = True
 ) -> pd.DataFrame:
   '''
   Creates a pandas DataFrame showing the network representation of the census data in census_dfs. 
@@ -120,10 +194,18 @@ def create_network_table(
       id (str):
           The name of the unique identifier that will be used to distinguish geographical areas.
 
+      crs (CRS | None):
+            A pythonic Coordinate Reference System manager that will be used to compute areas. Default is
+            EPSG:3347, a consistent, equal-area CRS based on square metres. Can be many formats; see 
+            https://pyproj4.github.io/pyproj/stable/api/crs/crs.html for more information.
+
       threshold (float | None):
           The percentage of overlap (divided by 100)
           that geographic areas must meet or exceed in order to have a connection.
           Default is 0.05, or 5 percent.    
+
+      verbose (bool | None):
+          Whether to issue print statements about the progress of network creation. Default is true.
 
   Returns:
       pd.DataFrame: the table.
@@ -134,15 +216,18 @@ def create_network_table(
   network_table = pd.DataFrame()
   drop_cols = final_cols[1:]
 
-  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id) for i in range(len(census_dfs))]
-  contained_cts = ct_containment(preprocessed_dfs, years)
+  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id, crs, verbose) for i in range(len(census_dfs))]
+  if verbose:
+      print('Preprocessing complete')
+  contained_cts = ct_containment(preprocessed_dfs, years, id, threshold, verbose)
   nodes = get_nodes(contained_cts, id, threshold)
+  if verbose:
+      print('All nodes found')
 
   #all_paths returns a three item tuple
   all_paths = find_all_paths(nodes, num_joins, id)
   all_paths_df = all_paths[0]
   left_cols = all_paths[1]
-  # right_cols = all_paths[2]
 
   #Dividing all network paths into full paths and partial paths
   na_df = all_paths_df[all_paths_df.isnull().any(axis=1)]
@@ -152,6 +237,8 @@ def create_network_table(
   full_paths_list = full_paths.to_numpy().flatten()
 
   partial_paths = find_partial_paths(na_df, years, left_cols, final_cols, full_paths_list)
+  if verbose:
+      print('All possible paths through the graph found')
 
   network_table = pd.concat([full_paths, partial_paths])
   network_table = network_table[final_cols]
@@ -161,6 +248,8 @@ def create_network_table(
 
   attributes = get_attributes(nodes, census_dfs, years, id)
   final_table = attach_attributes(network_table, attributes, years, final_cols, id)
+  if verbose:
+      print('All attributes found')
 
   #Formatting final table columns
   for i in range(len(final_cols)):
@@ -168,11 +257,90 @@ def create_network_table(
       popped = final_table.pop(col)
       final_table.insert(i, popped.name, popped)
   final_table.columns= final_table.columns.str.lower()
+  if verbose:
+      print('Table created')
 
   return final_table
 
 
-# Clustering
+def prob_reasoning_networks(
+    network_table_1: pd.DataFrame, 
+    network_table_2: pd.DataFrame, 
+    independent_vars_1: List[str], 
+    independent_vars_2: List[str], 
+    dependent_vars_1: List[str], 
+    dependent_vars_2: List[str], 
+    mismatches: Optional[dict[str, str]] = None, 
+    modify_tables: Optional[bool] = False
+) -> PDataFrame:
+    '''
+    Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
+    For more information about ppandas, visit: https://github.com/D3Mlab/ppandas/tree/master
+    
+    Takes in two network tables and lists of independent and dependent variables for each, performs and visualizes a join,
+    and returns the resulting PDataFrame (which can be used to obtain information about conditional probabilities).
+    
+    The second list of independent variables must be a subset of the first, so make sure the column names are the same
+    before passing them into this function. However, mismatches in independent variable column data allowed by ppandas
+    are okay.
+
+    Parameters:
+        network_table_1 (pd.DataFrame): 
+            The reference network table. Typically the network table associated with the data assumed to
+            be more unbiased and reliable.
+
+        network_table_2 (pd.DataFrame):
+            The second network table whose independent and dependent variables will be joined into a probabilistic
+            model of network_table_1.
+        
+        independent_vars_1 (List[str]):
+            A list of independent variables associated with network_table_1. Must be columns in network_table_1.
+        
+        independent_vars_2 (List[str]):
+            A list of independent variables associated with network_table_2. Must be columns in network_table_2
+            and every column in independent_vars_2 must also appear in independent_vars_1.
+
+        dependent_vars_1 (List[str]):
+            A list of dependent variables associated with network_table_1. Must be columns in network_table_1.
+
+        dependent_vars_2 (List[str]):
+            A list of dependent variables associated with network_table_2. Must be columns in network_table_2.
+            Unlike with independent variables, not every column in dependent_vars_2 also has to appear in dependent_vars_1.
+
+        mismatches (dict[str, str] | None):
+            A dictionary of the mismatches PDataFrame.pjoin will handle. Must be in format 
+            {<independent variable name>: <'categorical' | 'numerical' | 'spatial'> }. See the link above for more information.
+
+        modify_tables (bool | None):
+            A boolean indicating whether to modify table values to fix the mismatch(es), if applicable.
+            Default is False.
+
+    Returns:
+        PDataFrame:
+            The result of joining the two probabilistic models of network tables.
+
+    TODO: Finish handling mismatches by modifying network tables
+    '''
+    if set(independent_vars_1).union(set(independent_vars_2)) != set(independent_vars_1):
+        raise ValueError("Please make sure independent_vars_2 contains only variables that are also in independent_vars_1.")
+    all_vars_1 = independent_vars_1 + dependent_vars_1
+    all_vars_2 = independent_vars_2 + dependent_vars_2
+    pdf_1 = PDataFrame(independent_vars = independent_vars_1, data = network_table_1[all_vars_1])
+    pdf_2 = PDataFrame(independent_vars = independent_vars_2, data = network_table_2[all_vars_2])
+    # modify network tables according to mismatches if necessary
+    joined_pdf = pdf_1.pjoin(pdf_2, mismatches=mismatches)
+    if mismatches is not None and modify_tables:
+        if any(mismatch not in network_table_1.columns or mismatch not in network_table_2.columns for mismatch in mismatches.keys()):
+            raise ValueError("Please make sure mismatch keys correspond to columns in network tables.")
+        for var in mismatches.keys():
+            cpd = joined_pdf.bayes_net.get_cpds(var)
+            # handle mismatches here!!
+            # if cpd is not None:
+                # fixed_states = cpd.state_names[cpd.variable]
+    return joined_pdf
+
+
+# Module 2: Clustering
 
 def clustering_prep(
     network_table: pd.DataFrame, 
@@ -369,7 +537,7 @@ def cluster(
     
     return tsc
 
-# Plot & Visuals
+# Module 3: Visualization
 
 def plot_subnetwork(
     network_table: pd.DataFrame, 
@@ -1143,8 +1311,8 @@ def plot_line_means(
         figsize: Tuple[float, float] = (1200, 600),
 ) -> go.Figure:
     """
-    Creates an interactive line‐chart with one subplot per feature, showing how
-    cluster‐mean values evolve over the selected years.
+    Creates an interactive line chart with one subplot per feature, showing how
+    cluster mean values evolve over the selected years.
 
     Each subplot corresponds to a feature (variable), and each line within it
     tracks a single cluster across time, using a consistent colour per cluster.
@@ -1511,29 +1679,77 @@ def radar_chart_multiple_clusters(
 
 # Helpers
 
-def ct_containment(preprocessed_dfs, years):
-  '''
-  Returns a GeoDataFrame with census tracts which are contained
-  within a census tract from the following census
-  '''
-  num_years = len(years)
-  contained_tracts = []
+def process_year_pair(df1, df2, year1, year2, id='GeoUID', threshold=0.05):
+    """
+    Helper for ct_containment.
+    Computes intersecting census tracts between two years and returns a filtered GeoDataFrame.
+    Applies spatial join and intersection, computes overlap area and percentage,
+    and filters by a minimum threshold of shared area.
+    """
+    area1_col = f'area_{year1}'
+    area2_col = f'area_{year2}'
 
-  for i in range(num_years-1):
-      #Getting CTs which are contained within a previous year's CT
-      contained_df = gpd.overlay(preprocessed_dfs[i], preprocessed_dfs[i+1],
-                                  how='intersection')
-      with warnings.catch_warnings():
-          warnings.simplefilter(action='ignore', category=UserWarning)
+    df1 = df1[[id, area1_col, 'geometry']].rename(columns={id: f'{id}_1'})
+    df2 = df2[[id, area2_col, 'geometry']].rename(columns={id: f'{id}_2'})
 
-          contained_df['area_intersection'] = contained_df.area
-          #Calculating the percentage of the overlapping area between the 2 years
-          pct_col = 'pct_' + years[i+1] + '_of_' + years[i]
-          contained_df[pct_col] = (contained_df['area_intersection'] /
-                                    contained_df[['area_'+years[i],
-                                                  'area_'+years[i+1]]].min(axis=1))
-      contained_tracts.append(contained_df)
-  return contained_tracts
+    df1 = gpd.GeoDataFrame(df1, geometry='geometry', crs='EPSG:3347')
+    df2 = gpd.GeoDataFrame(df2, geometry='geometry', crs='EPSG:3347')
+
+    # Spatial join (geometry from df1 is preserved)
+    joined = gpd.sjoin(df1, df2, predicate='intersects', how='inner')
+
+    # Merge to get the right-hand geometry back in
+    joined = joined.merge(df2[[f'{id}_2', area2_col, 'geometry']], on=f'{id}_2', how='left', suffixes=('', '_2'))
+
+    # Vectorized intersection
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', category=UserWarning)
+        joined['geometry'] = shapely.intersection(joined['geometry'], joined['geometry_2'])
+
+    joined = gpd.GeoDataFrame(joined, geometry='geometry', crs='EPSG:3347')
+    joined['area_intersection'] = joined.geometry.area
+
+    pct_col = f'pct_{year2}_of_{year1}'
+    joined[pct_col] = joined['area_intersection'] / joined[[area1_col, area2_col]].min(axis=1)
+
+    joined = joined[joined[pct_col] >= threshold]
+
+    kept_cols = [f'{id}_1', f'{id}_2', area1_col, area2_col, 'geometry', 'area_intersection', pct_col]
+    return joined[kept_cols]
+
+
+def process_year_pair_wrapped(args):
+    """
+    Helper for ct_containment.
+    Wrapper for process_year_pair to enable parallel execution with ProcessPoolExecutor.
+    Unpacks arguments passed as a single tuple.
+    """
+    return process_year_pair(*args)
+
+
+def ct_containment(preprocessed_dfs, years, id='GeoUID', threshold=0.05, verbose=True):
+    '''
+    Returns a list of GeoDataFrames with tracts from one year
+    that intersect tracts from the following year, filtered by threshold.
+    Parallelizes if total data size > 20,000 rows.
+    '''
+    total_rows = sum(len(df) for df in preprocessed_dfs)
+    use_parallel = total_rows > 20_000
+    if verbose:
+        print(f"CT_CONTAINMENT: total rows = {total_rows} | parallel = {use_parallel}")
+
+    tasks = [
+        (preprocessed_dfs[i], preprocessed_dfs[i + 1], years[i], years[i + 1], id, threshold)
+        for i in range(len(years) - 1)
+    ]
+
+    if use_parallel:
+        with ProcessPoolExecutor() as executor:
+            results = list(executor.map(process_year_pair_wrapped, tasks))
+    else:
+        results = [process_year_pair(*args) for args in tasks]
+
+    return results
 
 
 def get_nodes(contained_tracts_df, id, threshold=0.05):
