@@ -367,20 +367,21 @@ def clustering_prep(
             not recommended as many numerical features, such as network level, have little bearing on the data.
 
     Returns:
-        (tuple[np.ndarray[np.float64], dict[str, Any]]):
-            a tuple of a 3d numpy array and a corresponding dictionary of labels showing
-            the shape of the array.
+        (tuple[np.ndarray[np.float64], dict[str, Any]], pd.DataFrame):
+            a tuple of a 3d numpy array, a corresponding dictionary of labels showing
+            the shape of the array, and the network table modified so it doesn't include any of the NaN rows.
     '''
     # default to considering all features
     if cols == []:
         cols = network_table.columns.to_list()
 
     # Find all years present in the data. These will be used as timesteps for tscluster.
-    year_cols = [col for col in network_table.columns.to_list() if id in col]
+    year_cols = [col for col in network_table.columns.to_list() if id.lower() in col.lower()]
     years = sorted(list({col[-4:] for col in year_cols}))
 
     # Filter columns
     filtered_cols = filter_columns(network_table, years, cols)
+    network_table = filtered_cols[2]
 
     # Extract features for each year and add them to a 2D array representing that year. 
     # Then add that array to a list of arrays representing the 3D array used for tscluster.
@@ -393,31 +394,44 @@ def clustering_prep(
     # Run load_data now so we get access to variables necessary for tnf_to_ntf
     list_of_arrays = load_data(list_of_arrays)[0]
     ntf_list_of_arrays = tnf_to_ntf(list_of_arrays)
-    count = -1
-    for entity in ntf_list_of_arrays:
-        count += 1
-        number_in_entity = False
-        for i in entity.flat:
-            if not np.isnan(i):
-                number_in_entity = True
-                break
-        if not number_in_entity:
-            np.delete(ntf_list_of_arrays, count, 0)
-
     # Interpolate remaining nan values for clustering
+    clean_entities = []
+    index = -1
     for entity in ntf_list_of_arrays:
+        index += 1
         transposed_entity = entity.T
-        for row in transposed_entity:
+        valid = True
+        for i, row in enumerate(transposed_entity):
             nans = np.isnan(row)
             x = np.arange(len(row))
-            row[nans] = np.interp(x[nans], x[~nans], row[~nans])
+            if np.all(nans):
+                valid = False  # entire row is NaN, skip entity
+                network_table = network_table.drop(index=index)
+                index -= 1
+                break
+            elif np.any(nans):
+                transposed_entity[i] = np.interp(x, x[~nans], row[~nans])
+        if valid:
+            clean_entities.append(transposed_entity.T)
 
-    list_of_arrays = ntf_to_tnf(ntf_list_of_arrays)
+    # Convert to 3D numpy array
+    if len(clean_entities) == 0:
+        raise ValueError("All entities were invalid (contained all-NaN rows). No data left for clustering.")
+    try:
+        list_of_arrays = np.stack(clean_entities)  # shape: (N entities, T time, F features)
+    except ValueError as e:
+        raise ValueError("Entities have inconsistent shapes and cannot be stacked.") from e
+    
+    list_of_arrays = ntf_to_tnf(list_of_arrays)
                 
     # Return the final numpy array and create a corresponding label dictionary.
     # This can then be preprocessed using tscluster's scalers.
-    label_dict = {'T': years, 'N': [i for i in range(count + 1)], 'F': filtered_cols[1]}
-    return (list_of_arrays, label_dict)
+    label_dict = {
+    'T': years,
+    'N': list(range(list_of_arrays.shape[1])),
+    'F': filtered_cols[1]
+    }
+    return (list_of_arrays, label_dict, network_table)
 
 
 def cluster(
@@ -527,8 +541,8 @@ def cluster(
                     old_cluster_distance = 0
                     new_cluster_distance = 0
                     for i in range(len(dict)):
-                        old_cluster_distance += (math.abs(int(node[1][label_dict['F'][i]]) - int(old_dict[i])))
-                        new_cluster_distance += (math.abs(int(node[1][label_dict['F'][i]]) - int(dict[i])))
+                        old_cluster_distance += (abs(int(node[1][label_dict['F'][i]]) - int(old_dict[i])))
+                        new_cluster_distance += (abs(int(node[1][label_dict['F'][i]]) - int(dict[i])))
                     if old_cluster_distance < new_cluster_distance:
                         cluster = node[1]['cluster_assignment']
                 node[1]['cluster_assignment'] = cluster
@@ -690,6 +704,7 @@ def plot_num_areas(
 ) -> go.Figure:
     '''
     Plots the number of geographical areas across a subset of census years in the data.
+    Note: Assumes the first column in the dataframe contains the ID.
 
     Parameters:
         network_table (pd.DataFrame):
@@ -1324,6 +1339,7 @@ def plot_line_means(
         years (List[int]):
             Time points to include (e.g. ['2011','2016','2021']). If None,
             auto-detected from the second level of the DataFrame’s columns.
+            
         selected_features (List[str]):
             Which features (base_cols) to plot
 
@@ -1882,48 +1898,53 @@ def first_year_partial_paths(all_partial_paths, years, final_cols):
   else:
     empty_df = pd.DataFrame(columns = final_cols)
     return empty_df
-  
+
 
 def unique_partial_paths(all_partial_paths, years, left_cols, final_cols):
-  '''
-  Return all unique partial paths between two consecutive input years.
-  Note: Define a partial path as a path in the network where the starting and
+    '''
+    Return all unique partial paths between two consecutive input years.
+    Note: Define a partial path as a path in the network where the starting and
         ending nodes are of any year (i.e., not a full path).
-  '''
-  num_years = len(years)
-  unique_partials = pd.DataFrame()
+    '''
+    num_years = len(years)
+    unique_partials = pd.DataFrame()
 
-  for i in range(1, num_years):
-      curr_year = years[i] + '_'
-      prev_year = years[i-1] + '_'
+    for i in range(1, num_years):
+        curr_year = years[i] + '_'
+        prev_year = years[i - 1] + '_'
 
-      curr_year_mask = all_partial_paths.iloc[:, 0].str.startswith(curr_year)
-      prev_year_mask = all_partial_paths.iloc[:, 0].str.startswith(prev_year)
+        curr_year_mask = all_partial_paths.iloc[:, 0].str.startswith(curr_year)
+        prev_year_mask = all_partial_paths.iloc[:, 0].str.startswith(prev_year)
 
-      curr_year_partials = all_partial_paths[curr_year_mask]
-      prev_year_partials = all_partial_paths[prev_year_mask]
+        curr_year_partials = all_partial_paths[curr_year_mask]
+        prev_year_partials = all_partial_paths[prev_year_mask]
 
-      curr_year_mask = ~curr_year_partials[left_cols[0]].isin(prev_year_partials)
-      curr_year_unique = curr_year_partials[curr_year_mask]
-      curr_year_unique = curr_year_partials.dropna(axis=1).T.drop_duplicates().T
+        curr_year_mask = ~curr_year_partials[left_cols[0]].isin(prev_year_partials)
+        curr_year_unique = curr_year_partials[curr_year_mask]
 
-  #Appending NaN column to the front to account for missing first year
-      for k in range(i):
-          curr_year_unique.insert(0, final_cols[k], np.nan)
+        curr_year_unique = curr_year_unique.dropna(axis=1).T.drop_duplicates().T
 
-  #Appending NaN column to the end to account for missing last year
-      if(not curr_year_unique.empty):
-          curr_year_val = max(curr_year_unique.T.stack().values)[:4]
-          curr_year_index = years.index(curr_year_val)
+        # Prepend NaN for missing earlier years
+        for k in range(i):
+            curr_year_unique.insert(0, final_cols[k], np.nan)
 
-          if (curr_year_index != years[-1]):
-              for j in range((num_years - 1) - curr_year_index):
-                  last_col = len(curr_year_unique.columns)
-                  curr_year_unique.insert(last_col, final_cols[-j], np.nan)
+        # Fix width: pad to match final_cols if needed
+        if not curr_year_unique.empty:
+            current_cols = curr_year_unique.shape[1]
+            missing_cols = len(final_cols) - current_cols
 
-          curr_year_unique.columns = final_cols
-      unique_partials = pd.concat([unique_partials, curr_year_unique])
-  return unique_partials
+            for j in range(missing_cols):
+                curr_year_unique.insert(curr_year_unique.shape[1], f'_pad_{j}', np.nan)
+
+            # Trim if too long
+            curr_year_unique = curr_year_unique.iloc[:, :len(final_cols)]
+
+            # Assign correct column names
+            curr_year_unique.columns = final_cols
+
+        unique_partials = pd.concat([unique_partials, curr_year_unique], ignore_index=True)
+
+    return unique_partials
 
 
 def find_partial_paths(partial_paths_df, years, left_cols, final_cols, exclude_nodes):
@@ -1995,9 +2016,9 @@ def filter_columns(
             not recommended as many numerical features, such as network level, have little bearing on the data.
     
     Returns:
-        (Tuple[List[str], List[str]]):
+        (Tuple[List[str], List[str]], pd.DataFrame):
             a tuple of the final filtered list of columns and the column labels that will
-            be used for the label dictionary.
+            be used for the label dictionary. Also returns the possibly modified network table.
     '''
     # Only add features that are numerical or nan. the user should have selected accordingly
     # but this is a sanity check
@@ -2019,6 +2040,9 @@ def filter_columns(
                         if entry != 'NaN' and entry != 'nan': # see if it is nan
                             non_numerical_val_in_col = True
                             break
+                except OverflowError: # set infinity to nan
+                    index = network_table.loc[(network_table == entry).any(axis=1)].index[0]
+                    network_table[col][index] = np.nan                       
             if not non_numerical_val_in_col:
                 col_list.append(col)
 
@@ -2041,7 +2065,7 @@ def filter_columns(
                     features_list.append(col[:-1])
                 cols_in_every_year.append(f"{col}{year}")
 
-    return (cols_in_every_year, features_list)
+    return (cols_in_every_year, features_list, network_table)
 
 
 def join_geometries(
