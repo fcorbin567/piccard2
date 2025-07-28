@@ -157,6 +157,8 @@ class TreeMaker:
                     'vector_base': source_vector,
                     'vector_cmp': None
                 })
+        num_exact = sum(1 for rec in mapping_records if rec['vector_cmp'] is not None)
+        print(f"Number of exact matches: {num_exact}")
 
         # 2. Sentence transformer similarity for unmatched
         unmatched_source = [rec for rec in mapping_records if rec['vector_cmp'] is None]
@@ -186,7 +188,8 @@ class TreeMaker:
                         break
                 if not match_found:
                     rec['vector_cmp'] = None
-
+        num_exact = sum(1 for rec in mapping_records if rec['vector_cmp'] is not None)
+        print(f"Number of exact matches: {num_exact}")
         return pd.DataFrame(mapping_records)
 
     @staticmethod
