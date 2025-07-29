@@ -13,27 +13,75 @@ from pathlib import Path
 nltk.download('stopwords')
 
 class TreeMaker:
+    """
+    A class for processing census metadata and creating tree visualizations.
+    
+    This class provides functionality for:
+    - Preprocessing census metadata from JSON files
+    - Computing similarity between census descriptions using various methods
+    - Matching descriptions across different census years
+    - Building hierarchical tree visualizations with color coding
+    """
     
     @staticmethod
-    def preprocess_census_metadata(path):
+    def preprocess_census_metadata(path, type_filter = "Total"):
+        """
+        Preprocess census metadata from a JSON file.
+        
+        Reads a JSON file containing census metadata, filters for specified type records targetting the type that represents the main skeleton of the tree,
+        and restructures the data for further processing.
+        
+        Args:
+            path (str): Path to the JSON file containing census metadata
+            type_filter (str): Type of records to filter for (default: "Total")
+            
+        Returns:
+            pd.DataFrame: Preprocessed DataFrame with columns ['vector', 'type', 'description', ...]
+                         where 'vector' contains the original index values
+        """
         df = pd.read_json(path).T
-        filtered_data = df[df["type"] == "Total"]
+        filtered_data = df[df["type"] == type_filter]
         print("The unique values for the type were: ", pd.unique(df["type"]), "and now it is: ", pd.unique(filtered_data["type"]))
         filtered_data = filtered_data.reset_index()
         filtered_data = filtered_data.rename(columns={"index": "vector"})
         return filtered_data
 
     @staticmethod
-    def census_similarity(sentence1, sentence2):
-        tokens1 = TreeMaker.process_census_text(sentence1)
-        tokens2 = TreeMaker.process_census_text(sentence2)
+    def jaccard_similarity(sentence1, sentence2):
+        """
+        Compute Jaccard similarity between two census descriptions.
+        
+        This function processes two census description strings and computes their
+        Jaccard similarity based on token overlap.
+        
+        Args:
+            sentence1 (str): First census description
+            sentence2 (str): Second census description
+            
+        Returns:
+            float: Jaccard similarity score between 0.0 and 1.0
+        """
+        tokens1 = TreeMaker.process_discription_text(sentence1)
+        tokens2 = TreeMaker.process_discription_text(sentence2)
         
         if not tokens1 and not tokens2:
             return 0.0
         return len(tokens1 & tokens2) / len(tokens1 | tokens2)
 
     @staticmethod
-    def process_census_text(text):
+    def process_discription_text(text):
+        """
+        Process and tokenize census text for similarity comparison.
+        
+        This function normalizes text, extracts meaningful tokens (words and numbers),
+        removes stopwords, and preserves numeric ranges and values.
+        
+        Args:
+            text (str): Raw census description text
+            
+        Returns:
+            set: Set of processed tokens (words and numbers, excluding stopwords)
+        """
         stop_words = set(stopwords.words('english'))
         # Normalize ranges first
         text = TreeMaker.normalize_ranges(text)
@@ -54,6 +102,17 @@ class TreeMaker:
 
     @staticmethod
     def normalize_ranges(text):
+        """
+        Normalize numeric ranges in text for consistent processing.
+        
+        Converts text like "80,000 to 100,000" to "80000-100000" format.
+        
+        Args:
+            text (str): Text containing potential numeric ranges
+            
+        Returns:
+            str: Text with normalized numeric ranges
+        """
         # Convert "80,000 to 100,000" to "80000-100000"
         text = re.sub(r'(\d{1,3}(?:,\d{3})*)\s+to\s+(\d{1,3}(?:,\d{3})*)', 
                         lambda m: f"{m.group(1).replace(',', '')}-{m.group(2).replace(',', '')}", 
@@ -63,14 +122,21 @@ class TreeMaker:
     @staticmethod
     def match_descriptions_jaccard(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9):
         """
-        Map descriptions in df_base to matching vectors in df_cmp.
-        - Exact description → exact vector.
-        - Otherwise Jaccard(token_set) ≥ threshold → first matching vector.
-
-        Expects both DataFrames to have columns ['vector', 'description'].
-        Returns a DataFrame with columns [description, vector_base, vector_cmp].
+        Match descriptions between two DataFrames using Jaccard similarity.
+        
+        This function performs a two-pass matching approach:
+        1. First pass: Exact description matches
+        2. Second pass: Jaccard similarity matches for unmatched descriptions
+        
+        Args:
+            source_df (pd.DataFrame): Source DataFrame with columns ['vector', 'description']
+            compare_df (pd.DataFrame): Comparison DataFrame with columns ['vector', 'description']
+            similarity_threshold (float): Minimum similarity score for matching (default: 0.9)
+            
+        Returns:
+            pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
+                         containing the mapping between source and comparison vectors
         """
-
         source_data = source_df.copy()
         compare_data = compare_df.copy()
 
@@ -107,7 +173,7 @@ class TreeMaker:
             
             for compare_idx, compare_row in compare_data[~compare_data.index.isin(matched_indices)].iterrows():
                 compare_description = compare_row['description']
-                similarity_score = TreeMaker.census_similarity(source_description, compare_description)
+                similarity_score = TreeMaker.jaccard_similarity(source_description, compare_description)
                 if similarity_score >= similarity_threshold and similarity_score > best_similarity:
                     best_similarity = similarity_score
                     best_match_idx = compare_idx
@@ -121,6 +187,26 @@ class TreeMaker:
 
     @staticmethod
     def match_descriptions_transformer(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
+        """
+        Match descriptions between two DataFrames using sentence transformers.
+        
+        This function uses pre-trained sentence transformers to compute semantic similarity
+        between census descriptions. 
+        
+        Performs a two-pass matching approach:
+        1. First pass: Exact description matches
+        2. Second pass: Sentence transformer similarity matches for unmatched descriptions
+        
+        Args:
+            source_df (pd.DataFrame): Source DataFrame with columns ['vector', 'description']
+            compare_df (pd.DataFrame): Comparison DataFrame with columns ['vector', 'description']
+            similarity_threshold (float): Minimum similarity score for matching (default: 0.9)
+            model_name (str): Name of the sentence transformer model to use (default: 'all-mpnet-base-v2')
+            
+        Returns:
+            pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
+                         containing the mapping between source and comparison vectors
+        """
         # 1. Exact matches
         compare_desc_to_info = {}
         for compare_idx, compare_row in compare_df.iterrows():
@@ -194,6 +280,23 @@ class TreeMaker:
 
     @staticmethod
     def match_descriptions_details_sentence_transformer( source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
+        """
+        Match descriptions using sentence transformers with optimized pre-encoding.
+        
+        Optimized version of match_descriptions_transformer that pre-encodes all descriptions
+        at once for better performance. Performs exact matching on 'description' column first,
+        then uses the 'details' column to find the best match when multiple exact matches exist.
+        
+        Args:
+            source_df (pd.DataFrame): Source DataFrame with columns ['vector', 'description', 'details']
+            compare_df (pd.DataFrame): Comparison DataFrame with columns ['vector', 'description', 'details']
+            similarity_threshold (float): Minimum similarity score for matching (default: 0.9)
+            model_name (str): Name of the sentence transformer model to use (default: 'all-mpnet-base-v2')
+            
+        Returns:
+            pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
+                         containing the mapping between source and comparison vectors
+        """
         # 1. Pre-encode ALL descriptions at once
         model = SentenceTransformer(model_name)
         
@@ -302,15 +405,19 @@ class TreeMaker:
     @staticmethod
     def merge_mappings(map_descriptions, *mappings_dfs):
         """
-        Start with base DataFrame (2021) and for each description,
-        collect all matching vectors from the mapping DataFrames.
-
+        Merge multiple mapping DataFrames into a single consolidated mapping.
+        
+        Takes a base DataFrame (typically 2021 data, or the latest year) and multiple mapping DataFrames,
+        then consolidates all matching vectors for each description into a single list.
+        
         Args:
-            base_df: Base DataFrame (e.g., data_2021) with columns ['description', 'vector']
-            *mappings: Mapping DataFrames with columns ['description', 'vector_base', 'vector_cmp']
-
+            map_descriptions (pd.DataFrame): Base DataFrame with columns ['description', 'vector']
+            *mappings_dfs: Variable number of mapping DataFrames with columns 
+                          ['description', 'vector_base', 'vector_cmp']
+            
         Returns:
             pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp_list']
+                         where vector_cmp_list contains all matching vectors from all mappings
         """
         merged_mappings = []
 
@@ -348,15 +455,29 @@ class TreeMaker:
     @staticmethod
     def build_tree(source_data, merged_df, tree_name, path = None):
         """
-        Create a colored tree visualization based on year matches.
 
+        
+        Creates a hierarchical tree visualization using Graphviz, where nodes
+        are colored based on how many census years they appear in. The tree structure is
+        determined by parent-child relationships in the source_data.
+        
+        Color coding:
+        - Gray: Source year only (no matches in other years)
+        - Salmon: Matches in 1 other year
+        - Yellow: Matches in 2 other years  
+        - Light green: Matches in 3+ other years
+        
         Args:
-            merged_df: DataFrame from merge_mappings_from_base with columns
-                    ['description', 'vector_base', 'vector_cmp_list']
-            total_only_df: DataFrame with parent-child relationships
-                        with columns ['parent_vector', 'vector']
+            source_data (pd.DataFrame): DataFrame with parent-child relationships
+                                      containing columns ['parent_vector', 'vector']
+            merged_df (pd.DataFrame): DataFrame from merge_mappings with columns
+                                    ['description', 'vector_base', 'vector_cmp_list']
+            tree_name (str): Name for the output tree file (without extension)
+            path (str, optional): Directory path for saving the tree file (default: current directory)
+            
+        Returns:
+            Digraph: Graphviz Digraph object representing the tree visualization
         """
-
         # Step 1: Create color and label mapping based on year matches
         color_map = {}
         node_labels = {}
