@@ -304,7 +304,6 @@ def clustering_prep(
 
     # Filter columns
     filtered_cols = filter_columns(network_table, years, cols)
-    network_table = filtered_cols[2]
 
     # Extract features for each year and add them to a 2D array representing that year. 
     # Then add that array to a list of arrays representing the 3D array used for tscluster.
@@ -464,8 +463,8 @@ def cluster(
                     old_cluster_distance = 0
                     new_cluster_distance = 0
                     for i in range(len(dict)):
-                        old_cluster_distance += (abs(int(node[1][label_dict['F'][i]]) - int(old_dict[i])))
-                        new_cluster_distance += (abs(int(node[1][label_dict['F'][i]]) - int(dict[i])))
+                        old_cluster_distance += (math.abs(int(node[1][label_dict['F'][i]]) - int(old_dict[i])))
+                        new_cluster_distance += (math.abs(int(node[1][label_dict['F'][i]]) - int(dict[i])))
                     if old_cluster_distance < new_cluster_distance:
                         cluster = node[1]['cluster_assignment']
                 node[1]['cluster_assignment'] = cluster
@@ -2216,9 +2215,9 @@ def filter_columns(
             not recommended as many numerical features, such as network level, have little bearing on the data.
     
     Returns:
-        (Tuple[List[str], List[str]], pd.DataFrame):
+        (Tuple[List[str], List[str]]):
             a tuple of the final filtered list of columns and the column labels that will
-            be used for the label dictionary. Also returns the possibly modified network table.
+            be used for the label dictionary.
     '''
     # Only add features that are numerical or nan. the user should have selected accordingly
     # but this is a sanity check
@@ -2240,9 +2239,6 @@ def filter_columns(
                         if entry != 'NaN' and entry != 'nan': # see if it is nan
                             non_numerical_val_in_col = True
                             break
-                except OverflowError: # set infinity to nan
-                    index = network_table.loc[(network_table == entry).any(axis=1)].index[0]
-                    network_table[col][index] = np.nan                       
             if not non_numerical_val_in_col:
                 col_list.append(col)
 
@@ -2265,7 +2261,7 @@ def filter_columns(
                     features_list.append(col[:-1])
                 cols_in_every_year.append(f"{col}{year}")
 
-    return (cols_in_every_year, features_list, network_table)
+    return (cols_in_every_year, features_list)
 
 
 def join_geometries(
