@@ -3,11 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "piccard2"
-version = "1.0.0"
+name = "piccard"
+version = "0.0.3"
 authors = [
-  { name="Abdulmohseen AlAli", email="aam20122003@gmail.com" },
-  { name="Elise Corbin", email="ecorbin567@gmail.com" },
   { name="Maliha Lodi", email="maliha.f.lodi@gmail.com" },
 ]
 description = "Visualizing demographic evolution using geographically inconsistent census data"
@@ -21,16 +19,13 @@ classifiers = [
 
 dependencies = [
   "geopandas",
-  "plotly",
+  "matplotlib",
   "networkx",
   "numpy",
   "pandas",
-  "tscluster",
-  "ppandas",
-  "shapely",
-  "swifter",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/ecorbin567/piccard2"
+"Homepage" = "https://github.com/lodi-m/piccard"
+"Documentation" = "https://htmlpreview.github.io/?https://github.com/lodi-m/piccard/blob/main/docs/documentation.html"
 "Research Paper" = "https://www.researchgate.net/publication/326137658_Visualizing_demographic_evolution_using_geographically_inconsistent_census_data"
