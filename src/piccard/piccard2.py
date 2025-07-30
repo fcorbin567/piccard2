@@ -13,13 +13,14 @@ from concurrent.futures import ProcessPoolExecutor
 from tscluster.opttscluster import OptTSCluster
 from tscluster.greedytscluster import GreedyTSCluster
 from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
-# visualizations
+# visualizations and analysis
 import random
 import plotly
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from itertools import cycle, islice
+from p_frame import PDataFrame
 # type annotations
 import pandas as pd
 import networkx as nx
@@ -32,9 +33,6 @@ warnings.filterwarnings('ignore')
 
 import sys
 import os
-
-sys.path.append(os.path.abspath('../../../ppandas/ppandas'))
-from p_frame import PDataFrame
 
 # Module 1: Network Creation
 
