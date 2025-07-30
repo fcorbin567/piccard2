@@ -9,6 +9,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from pathlib import Path
+
 nltk.download('stopwords')
 
 
@@ -564,4 +565,39 @@ class TreeMaker:
 
         dot.render(tree_name, path, format="svg")
         return dot
+
+    @staticmethod
+    def parse_tree_to_dict(filepath):
+        """
+        Parse a Graphviz tree file into a dictionary.
+        
+        Args:
+            filepath (str): Path to the Graphviz tree file
+        """
+        tree_dict = {}
+        node_pattern = re.compile(
+            r'(\w+)\s+\[label="([^"]+)"\s+fillcolor=([^\]]+)\]'
+        )
+
+        with open(filepath, encoding='utf-8') as f:
+            for line in f:
+                match = node_pattern.match(line.strip())
+                if match:
+                    node_id, label, fillcolor = match.groups()
+                    # Split the label into lines
+                    label_lines = label.split('\\n')
+                    description = label_lines[0]
+                    year_map = {}
+                    for entry in label_lines[1:]:
+                        # Match lines like "2021: v_CA21_4728"
+                        if ':' in entry:
+                            year, val = entry.split(':', 1)
+                            year_map[year.strip()] = val.strip()
+                    # Store in dictionary
+                    tree_dict[node_id] = {
+                        "description": description,
+                        **year_map,
+                        "fillcolor": fillcolor
+                    }
+        return tree_dict
 
