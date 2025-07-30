@@ -8,9 +8,8 @@
 5. [Matching Approaches](#matching-approaches)
 6. [Workflow Examples](#workflow-examples)
 7. [Advanced Features](#advanced-features)
-8. [Performance Considerations](#performance-considerations)
-9. [Troubleshooting](#troubleshooting)
-10. [API Reference](#api-reference)
+8. [Tree Analysis and Prediction](#tree-analysis-and-prediction)
+
 
 ## Overview
 
@@ -129,6 +128,50 @@ Normalizes numeric ranges in text for consistent processing.
 
 **Returns:**
 - `str`: Text with normalized numeric ranges
+
+#### `parse_tree_to_dict(filepath)`
+Parses a Graphviz tree file into a dictionary structure.
+
+**Parameters:**
+- `filepath` (str): Path to the Graphviz tree file
+
+**Returns:**
+- `Dict`: Dictionary mapping node IDs to their information including descriptions, year mappings, and colors
+
+**Example:**
+```python
+tree_dict = TreeMaker.parse_tree_to_dict("my_tree")
+```
+
+#### `extract_parent_child_relationships(filepath)`
+Extracts parent-child relationships from tree file edges.
+
+**Parameters:**
+- `filepath` (str): Path to the tree file (Graphviz format)
+
+**Returns:**
+- `Dict[str, List[str]]`: Dictionary mapping parent nodes to their children
+
+**Example:**
+```python
+relationships = TreeMaker.extract_parent_child_relationships("my_tree")
+```
+
+#### `predict_parent_nodes(tree_dict, parent_child_relationships, target_years)`
+Predicts parent nodes in other years using the additive property.
+
+**Parameters:**
+- `tree_dict` (Dict): Parsed tree dictionary with node info and year mappings
+- `parent_child_relationships` (Dict[str, List[str]]): Parent to children mapping
+- `target_years` (List[str]): Years to predict parents for (default: ['2016', '2011', '2006'])
+
+**Returns:**
+- `Dict[str, List[str]]`: Dictionary mapping parent nodes to years they can be predicted in
+
+**Example:**
+```python
+predictions = TreeMaker.predict_parent_nodes(tree_dict, relationships, ['2016', '2011'])
+```
 
 ## Matching Approaches
 
@@ -313,6 +356,104 @@ mapping_mpnet = TreeMaker.match_descriptions_transformer(
 )
 ```
 
+## Tree Analysis and Prediction
+
+### Overview
+TreeMaker provides advanced functionality for analyzing existing tree structures and predicting missing parent nodes based on the additive property of census data.
+
+### Key Concepts
+
+#### Additive Property
+In census data, parent variables often represent the sum of their child variables:
+```
+Parent_Value = Sum(Child_Values)
+```
+
+This property allows us to predict parent nodes in years where they don't exist or did not get matched, as long as all their children are available in those years.
+
+#### Tree Parsing
+The framework can parse existing Graphviz tree files to extract:
+- Node descriptions and metadata
+- Year-specific vector mappings
+- Parent-child relationships
+- Color coding information
+
+### Workflow for Tree Analysis
+
+```python
+# 1. Parse existing tree file
+tree_dict = TreeMaker.parse_tree_to_dict("existing_tree.gv")
+
+# 2. Extract parent-child relationships
+relationships = TreeMaker.extract_parent_child_relationships("existing_tree.gv")
+
+# 3. Predict missing parent nodes
+predictions = TreeMaker.predict_parent_nodes(
+    tree_dict=tree_dict,
+    parent_child_relationships=relationships,
+    target_years=['2016', '2011', '2006']
+)
+
+# 4. Analyze predictions
+for parent_node, predictable_years in predictions.items():
+    print(f"Parent '{parent_node}' can be predicted in years: {predictable_years}")
+```
+
+### Complete Analysis Workflow
+
+```python
+# Load and process census data
+data_2021 = TreeMaker.preprocess_census_metadata("census_ca21_full_metadata.json")
+data_2016 = TreeMaker.preprocess_census_metadata("census_ca16_full_metadata.json")
+
+# Create initial tree
+mapping_21_16 = TreeMaker.match_descriptions_jaccard(data_2021, data_2016, 0.9)
+merged_df = TreeMaker.merge_mappings(data_2021, mapping_21_16)
+tree = TreeMaker.build_tree(data_2021, merged_df, "analysis_tree", "trees/")
+
+# Analyze the created tree
+tree_dict = TreeMaker.parse_tree_to_dict("trees/analysis_tree")
+relationships = TreeMaker.extract_parent_child_relationships("trees/analysis_tree")
+
+# Predict missing parents
+predictions = TreeMaker.predict_parent_nodes(tree_dict, relationships)
+
+# Generate report
+print("=== Tree Analysis Report ===")
+print(f"Total nodes in tree: {len(tree_dict)}")
+print(f"Parent-child relationships: {len(relationships)}")
+print(f"Predictable parent nodes: {len(predictions)}")
+
+for parent, years in predictions.items():
+    parent_desc = tree_dict[parent]['description']
+    print(f"\nParent: {parent_desc}")
+    print(f"  Node ID: {parent}")
+    print(f"  Predictable in years: {years}")
+```
+
+### Prediction Algorithm Details
+
+The prediction algorithm works as follows:
+
+
+1. **Year Analysis**: Identifies which years the parent currently exists in
+2. **Child Verification**: For each target year, checks if ALL children exist
+3. **Prediction**: If all children exist in a target year, the parent can be predicted
+
+**Example Scenario:**
+```
+Parent: "Total Population"
+Children: ["Male Population", "Female Population"]
+
+If "Male Population" and "Female Population" both exist in 2016,
+but "Total Population" doesn't exist in 2016,
+then "Total Population" can be predicted for 2016.
+```
+
+### Use Cases for Tree Analysis
+
+- **Data Completeness Assessment**: Identify missing parent nodes across years
+- **Prediction Validation**: Verify which parent nodes can be reliably predicted
 
 ## Performance Considerations
 
@@ -365,6 +506,9 @@ print("Files available:", os.listdir('.'))
 | `match_descriptions_details_sentence_transformer` | `source_df, compare_df, threshold, model` | `pd.DataFrame` | Advanced transformer matching |
 | `merge_mappings` | `map_descriptions, *mappings_dfs` | `pd.DataFrame` | Merge multiple mappings |
 | `build_tree` | `source_data, merged_df, tree_name, path` | `Digraph` | Build tree visualization |
+| `parse_tree_to_dict` | `filepath` | `Dict` | Parse tree file to dictionary |
+| `extract_parent_child_relationships` | `filepath` | `Dict[str, List[str]]` | Extract parent-child relationships |
+| `predict_parent_nodes` | `tree_dict, parent_child_relationships, target_years` | `Dict[str, List[str]]` | Predict missing parent nodes |
 
 ### Data Structures
 

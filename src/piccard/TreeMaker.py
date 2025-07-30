@@ -9,6 +9,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from pathlib import Path
+from typing import Dict, List, Tuple, Set, Optional
 
 nltk.download('stopwords')
 
@@ -571,33 +572,199 @@ class TreeMaker:
         """
         Parse a Graphviz tree file into a dictionary.
         
+        This function reads a Graphviz tree file and extracts node information including
+        descriptions and year-specific vector mappings. It parses the node labels which
+        contain multi-line information about each node.
+        
         Args:
             filepath (str): Path to the Graphviz tree file
+            
+        Returns:
+            Dict: Dictionary mapping node IDs to their information
         """
+        # Step 1: Initialize empty dictionary to store parsed node information
         tree_dict = {}
         node_pattern = re.compile(
-            r'(\w+)\s+\[label="([^"]+)"\s+fillcolor=([^\]]+)\]'
+            r'\s*(\w+)\s+\[label=("([^"]+)"|([^\s]+))\s+fillcolor=([^\]]+)\]'
         )
 
+        # Step 3: Read and parse each line of the tree file
         with open(filepath, encoding='utf-8') as f:
             for line in f:
+                # Try to match the current line against our regex pattern
                 match = node_pattern.match(line.strip())
                 if match:
-                    node_id, label, fillcolor = match.groups()
-                    # Split the label into lines
+                    # Step 4: Extract matched groups from regex
+                    groups = match.groups()
+                    node_id = groups[0]  # First group is always the node ID
+                    fillcolor = groups[-1]  # Last group is always the fillcolor
+                    
+                    # Step 5: Handle both quoted and unquoted labels
+                    # groups[2] contains quoted label content (if present)
+                    # groups[3] contains unquoted label content (if present)
+                    if groups[2] is not None:  # Quoted label found
+                        label = groups[2]  # Use quoted content
+                    else:  # Unquoted label found
+                        label = groups[3]  # Use unquoted content
+                    
+                    # Step 6: Parse the label content
+                    # Split the label into lines (handles multi-line labels)
                     label_lines = label.split('\\n')
-                    description = label_lines[0]
+                    description = label_lines[0]  # First line is always the description
+                    
+                    # Step 7: Extract year mappings from remaining lines
                     year_map = {}
-                    for entry in label_lines[1:]:
-                        # Match lines like "2021: v_CA21_4728"
+                    for entry in label_lines[1:]:  # Skip first line (description)
+                        # Look for year:vector patterns like "2021: v_CA21_4728"
                         if ':' in entry:
-                            year, val = entry.split(':', 1)
-                            year_map[year.strip()] = val.strip()
-                    # Store in dictionary
+                            year, val = entry.split(':', 1)  # Split on first colon
+                            year_map[year.strip()] = val.strip()  # Store year->vector mapping
+                    
+                    # Step 8: Store parsed information in tree dictionary
                     tree_dict[node_id] = {
-                        "description": description,
-                        **year_map,
-                        "fillcolor": fillcolor
+                        "description": description,  # Human-readable description
+                        **year_map,                 # Year-specific vector mappings
+                        "fillcolor": fillcolor     # Color for visualization
                     }
+        
+        # Return the complete parsed tree dictionary
         return tree_dict
+
+
+
+    @staticmethod
+    def extract_parent_child_relationships(filepath: str) -> Dict[str, List[str]]:
+        """
+        Extract parent-child relationships from tree file edges.
+        
+        This function reads a Graphviz tree file and extracts all parent-child relationships
+        defined by edges (lines containing " -> "). It creates a mapping where each parent
+        node is associated with a list of its child nodes.
+        
+        Args:
+            filepath (str): Path to the tree file (Graphviz format)
+            
+        Returns:
+            Dict[str, List[str]]: Dictionary mapping parent nodes to their children
+        """
+        # Initialize a defaultdict to store parent->children mappings
+        # defaultdict(list) automatically creates an empty list for new keys
+        parent_child_relationships = defaultdict(list)
+        
+        # Open the tree file for reading with UTF-8 encoding
+        with open(filepath, encoding='utf-8') as f:
+            # Read the file line by line
+            for line in f:
+                # Remove leading/trailing whitespace from the line
+                line = line.strip()
+                
+                # Check if this line contains an edge definition (parent -> child)
+                # Graphviz edge syntax uses " -> " to connect nodes
+                if ' -> ' in line:
+                    # Split the line at " -> " to separate parent and child
+                    parts = line.split(' -> ')
+                    
+                    # Ensure we have exactly 2 parts (parent and child)
+                    if len(parts) == 2:
+                        # Extract parent node ID and remove any whitespace
+                        parent = parts[0].strip()
+                        # Extract child node ID and remove any whitespace
+                        child = parts[1].strip()
+                        
+                        # Add the child to the parent's list of children
+                        # defaultdict automatically creates a list if parent doesn't exist
+                        parent_child_relationships[parent].append(child)
+        
+        # Convert defaultdict back to regular dict and return
+        return dict(parent_child_relationships)
+
+    @staticmethod
+    def predict_parent_nodes(tree_dict: Dict, parent_child_relationships: Dict[str, List[str]], 
+                            target_years: List[str] = ['2016', '2011', '2006']) -> Dict[str, List[str]]:
+        """
+        Predict parent nodes in other years using the additive property.
+        
+        This function implements the core prediction algorithm. It identifies parent nodes
+        that exist in some years but not others, and determines if they can be predicted
+        in missing years by checking if all their children exist in those years.
+        
+        The additive property means: Parent_Value = Sum(Child_Values)
+        If all children exist in a target year, we can predict the parent for that year.
+        
+        Args:
+            tree_dict (Dict): Parsed tree dictionary with node info and year mappings
+            parent_child_relationships (Dict[str, List[str]]): Parent to children mapping
+            target_years (List[str]): Years to predict parents for (default: ['2016', '2011', '2006'])
+            
+        Returns:
+            Dict[str, List[str]]: Dictionary mapping parent nodes to years they can be predicted in
+        """
+        # Initialize empty dictionary to store predictions
+        # Key: parent node ID, Value: list of years where parent can be predicted
+        predictions = {}
+        
+        # Iterate through each parent node and its children
+        for parent_node, children in parent_child_relationships.items():
+            # Step 0: Validate that parent exists in tree dictionary
+            # Skip if parent node doesn't exist in the tree dictionary
+            # This could happen if the tree file is incomplete or corrupted
+            if parent_node not in tree_dict:
+                continue
+                
+            # Get the parent node's information (description, year mappings, etc.)
+            parent_info = tree_dict[parent_node]
+            
+            # Step 1: Find which years the parent currently exists in
+            # Initialize empty set to store years where parent exists
+            parent_years = set()
+            
+            # Check each key-value pair in parent_info
+            for key, value in parent_info.items():
+                # Only consider numeric keys (years) - missing years simply don't have keys
+                # This identifies years where the parent node actually exists
+                if key.isdigit():
+                    parent_years.add(key)
+            
+            # Step 2: Check each target year to see if parent can be predicted
+            # Initialize empty list to store years where parent can be predicted
+            predictable_years = []
+            
+            # Check each target year (2016, 2011, 2006)
+            for target_year in target_years:
+                # Skip if parent already exists in this target year
+                # No need to predict something that already exists
+                if target_year in parent_years:
+                    continue
+                    
+                # Step 3: Check if ALL children exist in the target year
+                # Start with assumption that we can predict (optimistic approach)
+                can_predict = True
+                
+                # Check each child of this parent
+                for child_node in children:
+                    # Skip if child node doesn't exist in tree dictionary
+                    if child_node not in tree_dict:
+                        can_predict = False
+                        break
+                        
+                    # Get child node's information
+                    child_info = tree_dict[child_node]
+                    
+                    # Check if child exists in target year
+                    # If child doesn't exist in target year, we cannot predict parent
+                    if target_year not in child_info:
+                        can_predict = False
+                        break
+                
+                # If all children exist in target year, add it to predictable years
+                if can_predict:
+                    predictable_years.append(target_year)
+            
+            # Step 4: Add parent to predictions if it can be predicted in at least one year
+            if predictable_years:
+                predictions[parent_node] = predictable_years
+        
+        # Return the final predictions dictionary
+        return predictions
+
 
