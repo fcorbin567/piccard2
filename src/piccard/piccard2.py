@@ -13,13 +13,14 @@ from concurrent.futures import ProcessPoolExecutor
 from tscluster.opttscluster import OptTSCluster
 from tscluster.greedytscluster import GreedyTSCluster
 from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
-# visualizations
+# visualizations and analysis
 import random
 import plotly
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from itertools import cycle, islice
+from p_frame import PDataFrame
 # type annotations
 import pandas as pd
 import networkx as nx
@@ -32,9 +33,6 @@ warnings.filterwarnings('ignore')
 
 import sys
 import os
-
-sys.path.append(os.path.abspath('../../../ppandas/ppandas'))
-from p_frame import PDataFrame
 
 # Module 1: Network Creation
 
@@ -263,83 +261,6 @@ def create_network_table(
   return final_table
 
 
-def prob_reasoning_networks(
-    network_table_1: pd.DataFrame, 
-    network_table_2: pd.DataFrame, 
-    independent_vars_1: List[str], 
-    independent_vars_2: List[str], 
-    dependent_vars_1: List[str], 
-    dependent_vars_2: List[str], 
-    mismatches: Optional[dict[str, str]] = None, 
-    modify_tables: Optional[bool] = False
-) -> PDataFrame:
-    '''
-    Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
-    For more information about ppandas, visit: https://github.com/D3Mlab/ppandas/tree/master
-    
-    Takes in two network tables and lists of independent and dependent variables for each, performs and visualizes a join,
-    and returns the resulting PDataFrame (which can be used to obtain information about conditional probabilities).
-    
-    The second list of independent variables must be a subset of the first, so make sure the column names are the same
-    before passing them into this function. However, mismatches in independent variable column data allowed by ppandas
-    are okay.
-
-    Parameters:
-        network_table_1 (pd.DataFrame): 
-            The reference network table. Typically the network table associated with the data assumed to
-            be more unbiased and reliable.
-
-        network_table_2 (pd.DataFrame):
-            The second network table whose independent and dependent variables will be joined into a probabilistic
-            model of network_table_1.
-        
-        independent_vars_1 (List[str]):
-            A list of independent variables associated with network_table_1. Must be columns in network_table_1.
-        
-        independent_vars_2 (List[str]):
-            A list of independent variables associated with network_table_2. Must be columns in network_table_2
-            and every column in independent_vars_2 must also appear in independent_vars_1.
-
-        dependent_vars_1 (List[str]):
-            A list of dependent variables associated with network_table_1. Must be columns in network_table_1.
-
-        dependent_vars_2 (List[str]):
-            A list of dependent variables associated with network_table_2. Must be columns in network_table_2.
-            Unlike with independent variables, not every column in dependent_vars_2 also has to appear in dependent_vars_1.
-
-        mismatches (dict[str, str] | None):
-            A dictionary of the mismatches PDataFrame.pjoin will handle. Must be in format 
-            {<independent variable name>: <'categorical' | 'numerical' | 'spatial'> }. See the link above for more information.
-
-        modify_tables (bool | None):
-            A boolean indicating whether to modify table values to fix the mismatch(es), if applicable.
-            Default is False.
-
-    Returns:
-        PDataFrame:
-            The result of joining the two probabilistic models of network tables.
-
-    TODO: Finish handling mismatches by modifying network tables
-    '''
-    if set(independent_vars_1).union(set(independent_vars_2)) != set(independent_vars_1):
-        raise ValueError("Please make sure independent_vars_2 contains only variables that are also in independent_vars_1.")
-    all_vars_1 = independent_vars_1 + dependent_vars_1
-    all_vars_2 = independent_vars_2 + dependent_vars_2
-    pdf_1 = PDataFrame(independent_vars = independent_vars_1, data = network_table_1[all_vars_1])
-    pdf_2 = PDataFrame(independent_vars = independent_vars_2, data = network_table_2[all_vars_2])
-    # modify network tables according to mismatches if necessary
-    joined_pdf = pdf_1.pjoin(pdf_2, mismatches=mismatches)
-    if mismatches is not None and modify_tables:
-        if any(mismatch not in network_table_1.columns or mismatch not in network_table_2.columns for mismatch in mismatches.keys()):
-            raise ValueError("Please make sure mismatch keys correspond to columns in network tables.")
-        for var in mismatches.keys():
-            cpd = joined_pdf.bayes_net.get_cpds(var)
-            # handle mismatches here!!
-            # if cpd is not None:
-                # fixed_states = cpd.state_names[cpd.variable]
-    return joined_pdf
-
-
 # Module 2: Clustering
 
 def clustering_prep(
@@ -551,7 +472,7 @@ def cluster(
     
     return tsc
 
-# Module 3: Visualization
+# Module 3: Visualization & Analysis
 
 def plot_subnetwork(
     network_table: pd.DataFrame, 
@@ -1008,10 +929,15 @@ def plot_clusters_parallelcats(
         plotly.graph_objects.Figure: 
             The interactive map
     """
-    # create a list of valid columns across years
-    columns = []
+    # add default years and cluster labels
     if years is None:
         years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
+    if cluster_labels is None:
+        num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
+        cluster_labels = [str(i) for i in range(num_clusters)]
+
+    # create a list of valid columns across years
+    columns = []
     for year in years:
         column = f'cluster_assignment_{year}'
         if column not in network_table.columns:
@@ -1162,7 +1088,7 @@ def plot_clusters_area(
                 name=f'Cluster {cluster}' if cluster_labels is None else cluster_labels[i],
                 stackgroup='one',
             ))
-            cumulative[cluster] = y_vals
+            # cumulative[cluster] = y_vals
         else:
             fig.add_trace(go.Scatter(
                 x=x_vals,
@@ -1273,7 +1199,7 @@ def plot_clusters_map(
         num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
     else:
         years = [col[-4:] for col in gdf.columns if "cluster_assignment" in col]
-        num_clusters = max([max(gdf[f'cluster_assignment_{year}']) for year in years]) + 1
+        num_clusters = max([max([int(element) for element in gdf[f'cluster_assignment_{year}']]) for year in years]) + 1
     if cluster_colours:
         for i in range(num_clusters):
             if i not in cluster_colours:
@@ -1318,12 +1244,14 @@ def plot_clusters_map(
 
 
 def plot_line_means(
-        cluster_feature_means: pd.DataFrame,
-        years: List[int],
+        network_table: pd.DataFrame,
         selected_features: List[str],
+        years: Optional[List[int]] = None,
+        varnames: Optional[List[str]] = None,
         cluster_colours: Optional[dict[int, str]] = None,
+        cluster_labels: Optional[List[str]] = None,
         title: str = "Mean Variables by Cluster Over Time",
-        figsize: Tuple[float, float] = (1200, 600),
+        figsize: Tuple[float, float] = (900, 600),
 ) -> go.Figure:
     """
     Creates an interactive line chart with one subplot per feature, showing how
@@ -1333,15 +1261,25 @@ def plot_line_means(
     tracks a single cluster across time, using a consistent colour per cluster.
 
     Parameters:
-        cluster_feature_means (pd.DataFrame):
-            The resulted dataframe from cluster_means_by_year function
+        network_table (pd.DataFrame):
+            The post-clustering network table.
 
-        years (List[int]):
-            Time points to include (e.g. ['2011','2016','2021']). If None,
-            auto-detected from the second level of the DataFrame’s columns.
+        years (List[int] | None):
+            Which years to plot. Default is every year in the network table.
             
         selected_features (List[str]):
             Which features (base_cols) to plot
+        
+        varnames (List[str] | None):
+            The custom variable names to plot
+
+        cluster_colours (dict[int, str] | None):
+            A dict mapping cluster numbers to their corresponding colours. If None, plotly's default
+            colour map will be used. If a cluster number is not part of the dict, plotly's default
+            colour map will be used for that cluster.
+
+        cluster_labels (List[str] | None): 
+            A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
         title (str):
             Figure title.
@@ -1354,7 +1292,10 @@ def plot_line_means(
         plotly.graph_objects.Figure:
             The composed line‐chart with subplots.
     """
+    if years is None:
+        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
 
+    cluster_feature_means = cluster_means_by_year(network_table, years, selected_features)
     # 1) Pick a distinct color palette & map clusters → colors
     clusters = list(cluster_feature_means.index)
 
@@ -1376,7 +1317,8 @@ def plot_line_means(
         rows=1,
         cols=len(selected_features),
         shared_yaxes=False,
-        subplot_titles=[v.replace('_', ' ').title() for v in selected_features],
+        subplot_titles=[v.replace('_', ' ').title() for v in selected_features] 
+        if varnames is None else varnames,
     )
 
     # 3) Add one trace per cluster per subplot, forcing line+marker colors
@@ -1384,13 +1326,13 @@ def plot_line_means(
         df_var = cluster_feature_means[var]
         x_vals = df_var.columns.astype(int)
 
-        for cluster in clusters:
+        for i, cluster in enumerate(clusters):
             fig.add_trace(
                 go.Scatter(
                     x=x_vals,
                     y=df_var.loc[cluster],
                     mode='lines+markers',
-                    name=f'Cluster {cluster}',
+                    name=f'Cluster {cluster}' if cluster_labels is None else cluster_labels[i],
                     line=dict(color=colors[cluster]),
                     marker=dict(color=colors[cluster]),
                     legendgroup=str(cluster),
@@ -1402,7 +1344,7 @@ def plot_line_means(
 
         # update axes
         fig.update_xaxes(
-            title_text=f"Mean {var.replace('_', ' ')}",
+            title_text=f"Mean {var.replace('_', ' ')}" if varnames is None else varnames[col_idx - 1],
             tickmode="array",
             tickvals=years,
             ticktext=[str(y) for y in years],
@@ -1424,10 +1366,12 @@ def plot_line_means(
 
 
 def plot_bar_means(
-        cluster_feature_means: pd.DataFrame,
-        years: List[int],
+        network_table: pd.DataFrame,
         selected_features: List[str],
+        years: Optional[List[int]] = None,
+        varnames: Optional[List[str]] = None,
         cluster_colours: Optional[dict[int, str]] = None,
+        cluster_labels: Optional[List[str]] = None,
         figsize: Tuple[float, float] = (900, 600),
 ) -> go.Figure:
     """
@@ -1439,21 +1383,27 @@ def plot_bar_means(
     provided `cluster_colours` mapping or default Plotly palette.
 
     Parameters:
+        network_table (pd.DataFrame):
+            The post-clustering network table.
 
-        cluster_feature_means : pd.DataFrame
-            The resulted DataFrame from the cluster_means_by_year function
+        years (List[int] | None):
+            Which years to plot. Default is every year in the network table.
 
-        years : List[int]
-            Years to include as separate subplots
-
-        selected_features : List[str]
+        selected_features (List[str]):
             List of feature names to plot on the x-axis
 
-        cluster_colours : dict[int, str], optional
-            Mapping from cluster label (row index) to a Plotly color string
-            If omitted, uses `plotly.colors.qualitative.Plotly` and cycles if needed
+        varnames (List[str] | None):
+            The custom variable names to plot
 
-        figsize : Tuple[int, float]
+        cluster_colours (dict[int, str] | None):
+            A dict mapping cluster numbers to their corresponding colours. If None, plotly's default
+            colour map will be used. If a cluster number is not part of the dict, plotly's default
+            colour map will be used for that cluster.
+
+        cluster_labels (List[str] | None): 
+            A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
+
+        figsize (Tuple[int, float]):
             Width and height of the full figure in pixels
 
 
@@ -1463,6 +1413,11 @@ def plot_bar_means(
         bars for clusters across the selected features
 
     """
+    if years is None:
+        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
+
+    cluster_feature_means = cluster_means_by_year(network_table, years, selected_features)
+
     # 1) determine grid
     rows = math.ceil(len(years) / 2)
 
@@ -1517,12 +1472,12 @@ def plot_bar_means(
         df_year = df_year[selected_features]
 
         # plot each cluster as a bar trace
-        for cluster in clusters:
+        for i, cluster in enumerate(clusters):
             fig.add_trace(
                 go.Bar(
-                    x=[v.replace('_', ' ') for v in selected_features],
+                    x=[v.replace('_', ' ') for v in selected_features] if varnames is None else varnames,
                     y=df_year.loc[cluster],
-                    name=f"Cluster {cluster}",
+                    name=f'Cluster {cluster}' if cluster_labels is None else cluster_labels[i],
                     marker_color=colors[cluster],
                     showlegend=(idx == 0)  # legend only on first subplot
                 ),
@@ -1545,35 +1500,70 @@ def plot_bar_means(
 
 
 def radar_chart_multiple_years(
-        cluster_feature_means: pd.DataFrame,
-        years: List[int],
+        network_table: pd.DataFrame,
         selected_cluster: int,
         selected_features: list,
+        years: Optional[List[int]] = None,
+        varnames: Optional[List[str]] = None,
+        year_colours: Optional[dict[int, str]] = None,
+        cluster_label: Optional[str] = None,
         figsize: Tuple[int, int] = (900, 600)
 ) -> go.Figure:
     """
     Create a radar (polar) chart of selected variables for a given cluster across years
 
     Parameters:
-    cluster_feature_means : pd.DataFrame
-        The resulted dataframe from cluster_means_by_year function
+        network_table (pd.DataFrame):
+            The post-clustering network table.
 
-    years : List[int]
-        Which years to plot
+        years (List[int] | None):
+            Which years to plot. Default is every year in the network table.
 
-    selected_cluster : int
-        Which clusters to plot
+        selected_cluster (int):
+            Which cluster to plot
 
-    selected_features : List[str]
-        Which features to include, should be at lease 3
+        selected_features (List[str]):
+            Which variables to plot.
 
-    figsize : (width, height),
-        Size of the figure in pixels
+        varnames (List[str] | None):
+            The custom variable names to plot
+        
+        year_colours (dict[int, str] | None):
+            A dict mapping indices of years to their corresponding colours. For example, if your
+            data goes from 2006 to 2021, 2006 corresponds to index 0, 2011 to 1, etc. If None, plotly's default
+            colour map will be used. If a year is not part of the dict, plotly's default
+            colour map will be used for that year.
+
+        cluster_label (str | None): 
+            The custom label of the cluster to show. Default is Cluster n.
+
+        figsize (width, height):
+            Size of the figure in pixels
+    
+    Returns:
+        plotly.graph_objects.Figure:
+            The resulting radar chart.
     """
+    if years is None:
+        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
 
+    cluster_feature_means = cluster_means_by_year(network_table, years, selected_features)
     # Get the year level of the MultiIndex
     lvl1 = cluster_feature_means.columns.get_level_values(1)
     fig = go.Figure()
+
+    num_clusters = len(years)
+    colors = []
+    if year_colours:
+        for i in range(num_clusters):
+            if i in year_colours:
+                colors.append(year_colours[i])
+            else:
+                colors.append(plotly.colors.qualitative.Plotly[i])
+    else:
+        colors = plotly.colors.qualitative.Plotly
+        if num_clusters > len(colors):
+            colors = list(islice(cycle(colors), num_clusters))
 
     for idx, year in enumerate(years):
         # build mask robustly
@@ -1599,14 +1589,17 @@ def radar_chart_multiple_years(
         # Add as a polar trace
         fig.add_trace(go.Scatterpolar(
             r=result.values,
-            theta=result.index,
+            theta=result.index if varnames is None else varnames,
             fill='toself',
             name=str(year),
+            line=dict(color=colors[idx]),
+            marker=dict(color=colors[idx]),
         ))
 
         fig.update_layout(
             title=dict(
-                text=f"Cluster {selected_cluster} Yearly Profile",
+                text=f"Cluster {selected_cluster} Yearly Profile" 
+                if cluster_label is None else f"{cluster_label} Yearly Profile",
                 x=0.5, xanchor="center"
             ),
             polar=dict(radialaxis=dict(visible=True)),
@@ -1620,36 +1613,66 @@ def radar_chart_multiple_years(
 
 
 def radar_chart_multiple_clusters(
-        cluster_feature_means: pd.DataFrame,
-        selected_year: int,
-        selected_features: list,
-        figsize: Tuple[int, int] = (900, 600),
+        network_table: pd.DataFrame,
+        selected_year: str,
+        selected_features: List[str],
+        clusters: Optional[List[int]] = None,
+        varnames: Optional[List[str]] = None,
+        cluster_colours: Optional[dict[int, str]] = None,
+        cluster_labels: Optional[List[str]] = None,
+        figsize: Optional[Tuple[int, int]] = (900, 600),
 ) -> go.Figure:
     """
     Draw a radar chart of the given variables for every cluster in `cluster_feature_means`,
     all on the same figure, for the specified year
 
     Parameters:
-    -----------
-    cluster_feature_means : pd.DataFrame
-        The resulted dataframe from cluster_means_by_year function
+        network_table (pd.DataFrame):
+            The post-clustering network table.
 
-    selected_year : int
-        Selected year to show its features
+        clusters (List[int]):
+            Which clusters to plot. Default is every cluster.
 
-    selected_features : list of str
-        Which variables to plot
+        selected_year (str):
+            The year for which features will be shown.
 
-    figsize : (width, height), default=(900,600)
-        Size of the figure in pixels
+        selected_features (List[str]):
+            Which variables to plot.
+
+        cluster_colours (dict[int, str] | None):
+            A dict mapping cluster numbers to their corresponding colours. If None, plotly's default
+            colour map will be used. If a cluster number is not part of the dict, plotly's default
+            colour map will be used for that cluster.
+
+        cluster_labels (List[str] | None): 
+            A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
+
+        figsize (Tuple[int, int] | None):
+            Size of the figure in pixels. Default is (900, 600).
 
     Returns:
-
-    fig : go.Figure
-        The Plotly figure containing one polar trace per cluster.
+        go.Figure:
+            The Plotly figure containing one polar trace per cluster.
     """
+    cluster_feature_means = cluster_means_by_year(network_table, [selected_year], selected_features)
     # Extract the year-level values
     lvl1 = cluster_feature_means.columns.get_level_values(1)
+
+    years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
+    num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
+    if clusters is None:
+        clusters = [i for i in range(num_clusters)]
+    colors = []
+    if cluster_colours:
+        for i in range(num_clusters):
+            if i in cluster_colours:
+                colors.append(cluster_colours[i])
+            else:
+                colors.append(plotly.colors.qualitative.Plotly[i])
+    else:
+        colors = plotly.colors.qualitative.Plotly
+        if num_clusters > len(colors):
+            colors = list(islice(cycle(colors), num_clusters))
 
     # Build boolean mask for matching year
     if selected_year in lvl1:
@@ -1669,14 +1692,17 @@ def radar_chart_multiple_clusters(
     fig = go.Figure()
 
     # Add one trace per cluster
-    for cluster_label in df_year.index:
-        vals = df_year.loc[cluster_label, selected_features]
-        fig.add_trace(go.Scatterpolar(
-            r=vals.values,
-            theta=selected_features,
-            fill='toself',
-            name=f'Cluster {cluster_label}'
-        ))
+    for i, cluster_label in enumerate(df_year.index):
+        if cluster_label in clusters:
+            vals = df_year.loc[cluster_label, selected_features]
+            fig.add_trace(go.Scatterpolar(
+                r=vals.values,
+                theta=selected_features if varnames is None else varnames,
+                line=dict(color=colors[i]),
+                marker=dict(color=colors[i]),
+                fill='toself',
+                name=f'Cluster {cluster_label}' if cluster_labels is None else cluster_labels[i]
+            ))
 
     # Final layout tweaks
     fig.update_layout(
@@ -1692,6 +1718,178 @@ def radar_chart_multiple_clusters(
     )
 
     return fig
+
+
+def prob_reasoning_networks(
+    network_table_1: pd.DataFrame, 
+    network_table_2: pd.DataFrame, 
+    independent_vars_1: List[str], 
+    independent_vars_2: List[str], 
+    dependent_vars_1: List[str], 
+    dependent_vars_2: List[str], 
+    mismatches: Optional[dict[str, str]] = None, 
+    modify_tables: Optional[bool] = False
+) -> PDataFrame:
+    '''
+    Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
+    For more information about ppandas, visit: https://github.com/D3Mlab/ppandas/tree/master
+    
+    Takes in two network tables and lists of independent and dependent variables for each, performs and visualizes a join,
+    and returns the resulting PDataFrame (which can be used to obtain information about conditional probabilities).
+    This function is recommended if you have datasets from different sources or datasets that designate geographical
+    regions using different units.
+    
+    The second list of independent variables must be a subset of the first, so make sure the column names are the same
+    before passing them into this function. However, mismatches in independent variable column data allowed by ppandas
+    are okay.
+
+    Parameters:
+        network_table_1 (pd.DataFrame): 
+            The reference network table. Typically the network table associated with the data assumed to
+            be more unbiased and reliable.
+
+        network_table_2 (pd.DataFrame):
+            The second network table whose independent and dependent variables will be joined into a probabilistic
+            model of network_table_1.
+        
+        independent_vars_1 (List[str]):
+            A list of independent variables associated with network_table_1. Must be columns in network_table_1.
+        
+        independent_vars_2 (List[str]):
+            A list of independent variables associated with network_table_2. Must be columns in network_table_2
+            and every column in independent_vars_2 must also appear in independent_vars_1.
+
+        dependent_vars_1 (List[str]):
+            A list of dependent variables associated with network_table_1. Must be columns in network_table_1.
+
+        dependent_vars_2 (List[str]):
+            A list of dependent variables associated with network_table_2. Must be columns in network_table_2.
+            Unlike with independent variables, not every column in dependent_vars_2 also has to appear in dependent_vars_1.
+
+        mismatches (dict[str, str] | None):
+            A dictionary of the mismatches PDataFrame.pjoin will handle. Must be in format 
+            {<independent variable name>: <'categorical' | 'numerical' | 'spatial'> }. See the link above for more information.
+
+        modify_tables (bool | None):
+            A boolean indicating whether to modify table values to fix the mismatch(es), if applicable.
+            Default is False.
+
+    Returns:
+        PDataFrame:
+            The result of joining the two probabilistic models of network tables.
+
+    TODO: Finish handling mismatches by modifying network tables
+    '''
+    if set(independent_vars_1).union(set(independent_vars_2)) != set(independent_vars_1):
+        raise ValueError("Please make sure independent_vars_2 contains only variables that are also in independent_vars_1.")
+    all_vars_1 = independent_vars_1 + dependent_vars_1
+    all_vars_2 = independent_vars_2 + dependent_vars_2
+    pdf_1 = PDataFrame(independent_vars = independent_vars_1, data = network_table_1[all_vars_1])
+    pdf_2 = PDataFrame(independent_vars = independent_vars_2, data = network_table_2[all_vars_2])
+    # modify network tables according to mismatches if necessary
+    joined_pdf = pdf_1.pjoin(pdf_2, mismatches=mismatches)
+    if mismatches is not None and modify_tables:
+        if any(mismatch not in network_table_1.columns or mismatch not in network_table_2.columns for mismatch in mismatches.keys()):
+            raise ValueError("Please make sure mismatch keys correspond to columns in network tables.")
+        for var in mismatches.keys():
+            cpd = joined_pdf.bayes_net.get_cpds(var)
+            # handle mismatches here!!
+            # if cpd is not None:
+                # fixed_states = cpd.state_names[cpd.variable]
+    return joined_pdf
+
+
+def prob_reasoning_years(
+    network_table: pd.DataFrame,  
+    year_1: str,
+    year_2: str,
+    independent_vars_1: List[str], 
+    independent_vars_2: List[str], 
+    dependent_vars_1: List[str], 
+    dependent_vars_2: List[str], 
+    mismatches: Optional[dict[str, str]] = None, 
+    modify_tables: Optional[bool] = False
+) -> PDataFrame:
+    '''
+    Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
+    For more information about ppandas, visit: https://github.com/D3Mlab/ppandas/tree/master
+    
+    Takes in two years from the same network table and lists of independent and dependent variables for each, performs and visualizes a join,
+    and returns the resulting PDataFrame (which can be used to obtain information about conditional probabilities).
+    
+    The second list of independent variables must be a subset of the first, so make sure the column names are the same
+    before passing them into this function. However, mismatches in independent variable column data allowed by ppandas
+    are okay.
+
+    Parameters:
+        network_table (pd.DataFrame): 
+            The network table
+
+        year_1 (str):
+            The first year examined.
+
+        year_2 (str):
+            The second year examined.
+        
+        independent_vars_1 (List[str]):
+            A list of independent variables associated with year_1. Must be columns in network_table and end in year_1.
+        
+        independent_vars_2 (List[str]):
+            A list of independent variables associated with year_2. Must be columns in network_table and end in year_2.
+            The columns (minus year 2) must be a subset of independent_vars_1 (minus year 1).
+
+        dependent_vars_1 (List[str]):
+            A list of dependent variables associated with year_1. Must be columns in network_table and end in year_1.
+
+        dependent_vars_2 (List[str]):
+            A list of dependent variables associated with year_1. Must be columns in network_table and end in year_1.
+            Unlike with independent variables, not every column in dependent_vars_2 also has to appear in dependent_vars_1.
+
+        mismatches (dict[str, str] | None):
+            A dictionary of the mismatches PDataFrame.pjoin will handle. Must be in format 
+            {<independent variable name>: <'categorical' | 'numerical' | 'spatial'> }. See the link above for more information.
+
+        modify_tables (bool | None):
+            A boolean indicating whether to modify table values to fix the mismatch(es), if applicable.
+            Default is False.
+
+    Returns:
+        PDataFrame:
+            The result of joining the two probabilistic models of network tables.
+
+    TODO: Finish handling mismatches by modifying network tables
+    '''
+    if any(var[-4:] != year_1 for var in list(set(independent_vars_1) | set(dependent_vars_1))):
+        raise ValueError("Please make sure all variables in independent_vars_1 and dependent_vars_1 end in year_1.")
+    if any(var[-4:] != year_2 for var in list(set(independent_vars_2) | set(dependent_vars_2))):
+        raise ValueError("Please make sure all variables in independent_vars_2 and dependent_vars_2 end in year_2.")
+    if set([var[:-4] for var in independent_vars_1]).union(set([var[:-4] for var in independent_vars_2])) != set([var[:-4] for var in independent_vars_1]):
+        raise ValueError("Please make sure independent_vars_2 (excluding years) contains only variables that are also in independent_vars_1 (excluding years).")
+    all_vars_1 = independent_vars_1 + dependent_vars_1
+    all_vars_2 = independent_vars_2 + dependent_vars_2
+    # removing year from column names
+    network_table_1 = network_table[all_vars_1]
+    for var in all_vars_1:
+        network_table_1[var[:-5]] = network_table_1[var]
+        network_table_1.drop(columns=[f'{var}'], inplace=True)
+    network_table_2 = network_table[all_vars_2]
+    for var in all_vars_2:
+        network_table_2[var[:-5]] = network_table_2[var]
+        network_table_2.drop(columns=[f'{var}'], inplace=True)
+    pdf_1 = PDataFrame(independent_vars = [var[:-5] for var in independent_vars_1], data = network_table_1)
+    pdf_2 = PDataFrame(independent_vars = [var[:-5] for var in independent_vars_2], data = network_table_2)
+    # modify network tables according to mismatches if necessary
+    joined_pdf = pdf_1.pjoin(pdf_2, mismatches=mismatches)
+    if mismatches is not None and modify_tables:
+        if any(mismatch not in network_table.columns for mismatch in mismatches.keys()):
+            raise ValueError("Please make sure mismatch keys correspond to columns in network tables.")
+        for var in mismatches.keys():
+            cpd = joined_pdf.bayes_net.get_cpds(var)
+            # handle mismatches here!!
+            # if cpd is not None:
+                # fixed_states = cpd.state_names[cpd.variable]
+    return joined_pdf
+
 
 # Helpers
 
