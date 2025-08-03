@@ -1,4 +1,3 @@
-
 import numpy as np
 import pandas as pd
 from typing import Optional, List, Any, Tuple, Union
@@ -18,10 +17,7 @@ from core.clustering import *
 from core.network import core_join_geometries
 
 def visual_plot_clusters_scatter(
-    network_table: pd.DataFrame,
-    arr: np.ndarray[np.float64],
-    label_dict: dict[str, Any],
-    tsc: Union[OptTSCluster, GreedyTSCluster],
+    network_table: ClusteredNetworkTable,
     years: Optional[List[str]] = None,
     cluster_colours: Optional[dict[int, str]] = None,
     dynamic_paths_only: Optional[bool] = True,
@@ -46,18 +42,8 @@ def visual_plot_clusters_scatter(
     make sure the paths are numbered according to their position in network_table.
 
     Parameters:
-        network_table (pd.DataFrame):
-            The result of pc.create_network_table().
-
-        arr (np.ndarray[np.float64]):
-            The numpy array from pc.clustering_prep() that you used in pc.cluster().
-
-        label_dict (dict[str, Any]):
-            The label dictionary from pc.clustering_prep() that you used in pc.cluster(). 
-            label_dict could also be a custom label dictionary.
-        
-        tsc (Union[OptTSCluster, GreedyTSCluster]): 
-            The result of pc.cluster().
+        network_table (ClusteredNetworkTable):
+            The clustered network table.
 
         years (List[str] | None): 
             The years displayed on the map. Default is all years in the network table.
@@ -93,10 +79,14 @@ def visual_plot_clusters_scatter(
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
     Returns:
-        (List[go.Figure]):
+        List[go.Figure]:
             a list of plotly.graph_objects.Figure (you cannot show the whole list; rather, iterate through 
             the list and show each figure)
     '''
+    table = network_table.table
+    tsc = network_table.tsc
+    arr = network_table.arr
+    label_dict = network_table.label_dict
 
     # get necessary data from tsc
     cluster_centres = tsc.cluster_centers_
@@ -104,14 +94,14 @@ def visual_plot_clusters_scatter(
 
     # prepare the variables we will use to iterate through features and cluster centres
     F = arr.shape[2]
-    K = cluster_centres.shape[1] if cluster_centres is not None else np.unique(labels).size
+    K = network_table.num_clusters
 
     # verify years exist in network table
     if years is None:
-        years = label_dict['T']
+        years = network_table.years
     for year in years:
         column = f'cluster_assignment_{year}'
-        if column not in network_table.columns:
+        if column not in table.columns:
             raise ValueError(f"Expected column '{column}' not found in DataFrame.")
 
     # set default values and colours      
@@ -135,22 +125,22 @@ def visual_plot_clusters_scatter(
             colors = list(islice(cycle(colors), K))
 
     # make sure clusters_to_show and clusters_to_exclude only look at cluster assignments in years timeframe
-    new_network_table = network_table.copy(deep=True)
-    for year in label_dict['T']:
+    new_table = table.copy(deep=True)
+    for year in years:
         if year not in years:
-            new_network_table[f'cluster_assignment_{year}'] = [
-                np.nan for _ in range(len(network_table[f'cluster_assignment_{year}']))]
+            new_table[f'cluster_assignment_{year}'] = [
+                np.nan for _ in range(len(table[f'cluster_assignment_{year}']))]
 
     # filter entities using paths_to_show, clusters_to_show, clusters_to_exclude, dynamic_paths_only
     paths_to_show = [
         i for i in paths_to_show
-        if any(int(c) in clusters_to_show for c in new_network_table.iloc[i][-len(label_dict['T']):])
-        and all(int(c) not in clusters_to_exclude for c in new_network_table.iloc[i][-len(label_dict['T']):])
+        if any(int(c) in clusters_to_show for c in new_table.iloc[i][-len(label_dict['T']):])
+        and all(int(c) not in clusters_to_exclude for c in new_table.iloc[i][-len(label_dict['T']):])
     ]
     if ids_to_show is not None:
         paths_to_show = [
         i for i in paths_to_show
-        if any(c in ids_to_show for c in [network_table.iloc[i][label_dict['T'].index(j)] for j in years])
+        if any(c in ids_to_show for c in [table.iloc[i][label_dict['T'].index(j)] for j in years])
         ]
     if dynamic_paths_only:
         dynamic_entities = set(tsc.get_dynamic_entities()[0])
@@ -168,7 +158,7 @@ def visual_plot_clusters_scatter(
             y = arr[:, i, f]
             
             # Create hover data
-            path_ids = [network_table.iloc[i][label_dict['T'].index(j)] for j in years]
+            path_ids = [table.iloc[i][label_dict['T'].index(j)] for j in years]
             for id in path_ids:
                 if id not in used_paths:
                     used_paths[id] = [i]
@@ -229,7 +219,7 @@ def visual_plot_clusters_scatter(
     return figures
 
 def visual_plot_clusters_parallelcats(
-    network_table: pd.DataFrame, 
+    network_table: ClusteredNetworkTable, 
     years: Optional[List[str]] = None,
     cluster_colours: Optional[dict[int, str]] = None,
     colour_index_year: Optional[str] = None,
@@ -245,10 +235,8 @@ def visual_plot_clusters_parallelcats(
     across categories.
 
     Parameters:
-        network_table (pd.DataFrame):
-            A DataFrame containing the data. Expected to include one column per year
-            with names in the format cluster_assignment_(year), e.g., 'cluster_assignment_2016'. (This
-            will automatically be done if you have already run pc.cluster())
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[str] | None):
             A list of strings representing the time points to include, such as ['2011', '2016', '2021'].
@@ -276,17 +264,18 @@ def visual_plot_clusters_parallelcats(
             The interactive map
     """
     # add default years and cluster labels
+    table = network_table.table
+    num_clusters = network_table.num_clusters
     if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
+        years = network_table.years
     if cluster_labels is None:
-        num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
         cluster_labels = [str(i) for i in range(num_clusters)]
 
     # create a list of valid columns across years
     columns = []
     for year in years:
         column = f'cluster_assignment_{year}'
-        if column not in network_table.columns:
+        if column not in table.columns:
             raise ValueError(f"Expected column '{column}' not found in DataFrame.")
         else:
             columns.append(column)
@@ -294,7 +283,7 @@ def visual_plot_clusters_parallelcats(
     # create a list of dimensions (labelled vertical bars)
     dimensions = []
     for col in columns:
-        values = network_table[col]
+        values = table[col]
         if cluster_labels:
             value_map = {i: label for i, label in enumerate(cluster_labels)}
             values = values.map(value_map)
@@ -309,12 +298,11 @@ def visual_plot_clusters_parallelcats(
         colour_index_year = years[0]
         
     color_col = f"cluster_assignment_{colour_index_year}"
-    if color_col not in network_table.columns:
+    if color_col not in table.columns:
         raise ValueError(f"Coloring year '{colour_index_year}' not found in the table.")
     else:
-        color_values = network_table[color_col]
+        color_values = table[color_col]
     
-    num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
     colors = []
     if cluster_colours:
         for i in range(num_clusters):
@@ -344,7 +332,7 @@ def visual_plot_clusters_parallelcats(
     return fig
 
 def visual_plot_clusters_area(
-    network_table: pd.DataFrame,
+    network_table: ClusteredNetworkTable,
     years: Optional[List[str]] = None,
     cluster_colours: Optional[dict[int, str]] = None,
     cluster_labels: Optional[List[str]] = None,
@@ -359,10 +347,8 @@ def visual_plot_clusters_area(
     across categories.
 
     Parameters:
-        network_table (pd.DataFrame):
-            A DataFrame containing the data. Expected to include one column per year
-            with names in the format <feature_name>_<year>, e.g., 'cluster_assignment_2016'. (This
-            will automatically be done if you have already run pc.cluster())
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[str] | None):
             A list of strings representing the time points to include, such as ['2011', '2016', '2021'].
@@ -387,22 +373,21 @@ def visual_plot_clusters_area(
         plotly.graph_objects.Figure: 
             The interactive map
     """
-
-    # auto-detect year columns if not provided
+    table = network_table.table
+    num_clusters = network_table.num_clusters
     if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
+        years = network_table.years
 
     # build count table: rows = years, columns = clusters
     cluster_counts = pd.DataFrame()
     for year in years:
         col = f"cluster_assignment_{year}"
-        if col not in network_table.columns:
+        if col not in table.columns:
             raise ValueError(f"Expected column '{col}' not found in DataFrame.")
-        counts = network_table[col].value_counts().sort_index()
+        counts = table[col].value_counts().sort_index()
         cluster_counts[year] = counts
     cluster_counts = cluster_counts.fillna(0).astype(int).T
 
-    num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
     colors = []
     if cluster_colours:
         for i in range(num_clusters):
@@ -456,7 +441,7 @@ def visual_plot_clusters_area(
     return fig
 
 def visual_plot_line_means(
-        network_table: pd.DataFrame,
+        network_table: ClusteredNetworkTable,
         selected_features: List[str],
         years: Optional[List[int]] = None,
         varnames: Optional[List[str]] = None,
@@ -473,8 +458,8 @@ def visual_plot_line_means(
     tracks a single cluster across time, using a consistent colour per cluster.
 
     Parameters:
-        network_table (pd.DataFrame):
-            The post-clustering network table.
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[int] | None):
             Which years to plot. Default is every year in the network table.
@@ -502,16 +487,17 @@ def visual_plot_line_means(
 
     Returns:
         plotly.graph_objects.Figure:
-            The composed line‐chart with subplots.
+            The composed line chart with subplots.
     """
+    table = network_table.table
+    num_clusters = network_table.num_clusters
     if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
+        years = network_table.years
 
-    cluster_feature_means = core_cluster_means_by_year(network_table, years, selected_features)
+    cluster_feature_means = core_cluster_means_by_year(table, years, selected_features)
     # 1) Pick a distinct color palette & map clusters → colors
     clusters = list(cluster_feature_means.index)
 
-    num_clusters = len(years)
     colors = []
     if cluster_colours:
         for i in range(num_clusters):
@@ -577,7 +563,7 @@ def visual_plot_line_means(
     return fig
 
 def visual_plot_bar_means(
-        network_table: pd.DataFrame,
+        network_table: ClusteredNetworkTable,
         selected_features: List[str],
         years: Optional[List[int]] = None,
         varnames: Optional[List[str]] = None,
@@ -594,8 +580,8 @@ def visual_plot_bar_means(
     provided `cluster_colours` mapping or default Plotly palette.
 
     Parameters:
-        network_table (pd.DataFrame):
-            The post-clustering network table.
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[int] | None):
             Which years to plot. Default is every year in the network table.
@@ -624,17 +610,18 @@ def visual_plot_bar_means(
         bars for clusters across the selected features
 
     """
+    table = network_table.table
+    num_clusters = network_table.num_clusters
     if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
+        years = network_table.years
 
-    cluster_feature_means = core_cluster_means_by_year(network_table, years, selected_features)
+    cluster_feature_means = core_cluster_means_by_year(table, years, selected_features)
 
     # 1) determine grid
     rows = math.ceil(len(years) / 2)
     # 2) prepare color map for clusters
     clusters = list(cluster_feature_means.index)
 
-    num_clusters = len(years)
     colors = []
     if cluster_colours:
         for i in range(num_clusters):
@@ -709,7 +696,7 @@ def visual_plot_bar_means(
     return fig
 
 def visual_radar_chart_multiple_years(
-        network_table: pd.DataFrame,
+        network_table: ClusteredNetworkTable,
         selected_cluster: int,
         selected_features: list,
         years: Optional[List[int]] = None,
@@ -722,8 +709,8 @@ def visual_radar_chart_multiple_years(
     Create a radar (polar) chart of selected variables for a given cluster across years
 
     Parameters:
-        network_table (pd.DataFrame):
-            The post-clustering network table.
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[int] | None):
             Which years to plot. Default is every year in the network table.
@@ -753,15 +740,16 @@ def visual_radar_chart_multiple_years(
         plotly.graph_objects.Figure:
             The resulting radar chart.
     """
+    table = network_table.table
+    num_clusters = network_table.num_clusters
     if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
+        years = network_table.years
 
-    cluster_feature_means = core_cluster_means_by_year(network_table, years, selected_features)
+    cluster_feature_means = core_cluster_means_by_year(table, years, selected_features)
     # Get the year level of the MultiIndex
     lvl1 = cluster_feature_means.columns.get_level_values(1)
     fig = go.Figure()
 
-    num_clusters = len(years)
     colors = []
     if year_colours:
         for i in range(num_clusters):
@@ -821,7 +809,7 @@ def visual_radar_chart_multiple_years(
     return fig
 
 def visual_radar_chart_multiple_clusters(
-        network_table: pd.DataFrame,
+        network_table: ClusteredNetworkTable,
         selected_year: str,
         selected_features: List[str],
         clusters: Optional[List[int]] = None,
@@ -835,8 +823,8 @@ def visual_radar_chart_multiple_clusters(
     all on the same figure, for the specified year
 
     Parameters:
-        network_table (pd.DataFrame):
-            The post-clustering network table.
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         clusters (List[int]):
             Which clusters to plot. Default is every cluster.
@@ -862,12 +850,13 @@ def visual_radar_chart_multiple_clusters(
         go.Figure:
             The Plotly figure containing one polar trace per cluster.
     """
-    cluster_feature_means = core_cluster_means_by_year(network_table, [selected_year], selected_features)
+    table = network_table.table
+    num_clusters = network_table.num_clusters
+
+    cluster_feature_means = core_cluster_means_by_year(table, [selected_year], selected_features)
     # Extract the year-level values
     lvl1 = cluster_feature_means.columns.get_level_values(1)
 
-    years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
-    num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
     if clusters is None:
         clusters = [i for i in range(num_clusters)]
     colors = []
@@ -928,28 +917,26 @@ def visual_radar_chart_multiple_clusters(
     return fig
 
 def visual_plot_clusters_map(
+    geofile_path: str,
+    network_table: ClusteredNetworkTable,
     year: str,
-    id: Optional[str] = 'geouid',
     cluster_colours: Optional[dict[int, str]] = None,
     label_dict: Optional[dict[str, Any]] = None,
     cluster_labels: Optional[List[str]] = None,
-    geofile_path: Optional[str] = None,
-    network_table: Optional[pd.DataFrame] = None,
-    gdf: Optional[gpd.GeoDataFrame] = None,
     figsize: Optional[Tuple[float, float]] = (700, 500),
 ) -> px.choropleth:
     """
     Plots cluster assignments in their associated geographical regions for a specific year using a GeoDataFrame.
-    To properly load the geographical data, the user must provide AT LEAST ONE of the following:
-    1. geofile_path AND network_table
-    2. gdf
 
     Parameters:
+        geofile_path (str):
+            Path to geographical data file
+
+        network_table (NetworkTable):
+            Network table to be merged with GeoJSON
+
         year (str):
             Year to visualize (used in column name)
-
-        id (str):
-            Unique identifier for the geographical region and year (used in hover data). Default is 'geouid'.
 
         cluster_colours (dict[int, str] | None):
             A dict mapping cluster numbers to their corresponding colours. If None, plotly's default
@@ -964,15 +951,6 @@ def visual_plot_clusters_map(
         cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
-        geofile_path (str | None):
-            Path to geographical data file if gdf is not passed
-
-        network_table (pd.DataFrame | None):
-            Network table to be merged with GeoJSON
-
-        gdf (GeoDataFrame | None):
-            Pre-joined GeoDataFrame (recommended for advanced users)
-
         figsize (Tuple[float, float] | None):
             A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
 
@@ -980,11 +958,8 @@ def visual_plot_clusters_map(
         plotly.express.choropleth: 
             The interactive choropleth map
     """
-    # Load and merge geodata if not provided
-    if gdf is None:
-        if geofile_path is None or network_table is None:
-            raise ValueError("You must provide either `gdf` or both `geofile_path` and `network_table`.")
-        gdf = core_join_geometries(geofile_path, network_table, year)
+    # Load and merge geodata
+    gdf = core_join_geometries(geofile_path, network_table, year)
 
     # Ensure column is valid
     cluster_col = f"cluster_assignment_{year}"
@@ -1010,12 +985,8 @@ def visual_plot_clusters_map(
             hover_data[f'{feature}_{year}'] = True
 
     # create colours
-    if network_table is not None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
-        num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
-    else:
-        years = [col[-4:] for col in gdf.columns if "cluster_assignment" in col]
-        num_clusters = max([max([int(element) for element in gdf[f'cluster_assignment_{year}']]) for year in years]) + 1
+    num_clusters = network_table.num_clusters
+
     if cluster_colours:
         for i in range(num_clusters):
             if i not in cluster_colours:
@@ -1057,4 +1028,3 @@ def visual_plot_clusters_map(
     )
 
     return fig
-

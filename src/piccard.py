@@ -1,35 +1,21 @@
-# network creation
+# type annotations
 import numpy as np
 import geopandas as gpd
-
-# # clustering
-from tscluster.opttscluster import OptTSCluster
-from tscluster.greedytscluster import GreedyTSCluster
-# visualizations and analysis
-import plotly
-import plotly.express as px
-import plotly.graph_objects as go
-from p_frame import PDataFrame
-# type annotations
 import pandas as pd
 import networkx as nx
-from typing import Union, Any, List, Tuple, Optional, Dict, Callable, Iterable
+from typing import Union, Any, List, Tuple, Optional, Dict
 from pyproj import CRS
 
 import warnings
 warnings.filterwarnings('ignore')
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import sys
-import os
 from core.clustering import *
 from core.network import *
 from core.probabilistic_reasoning import *
 from visualization.network_visual import *
 from visualization.cluster_plots import *
 from tree.tree_maker import TreeMaker
+
 # Module 1: Network Creation
 
 def preprocessing(
@@ -120,9 +106,9 @@ def create_network_table(
     crs: Optional[CRS] = "EPSG:3347",
     threshold: Optional[float] = 0.05,
     verbose: Optional[bool] = True
-) -> pd.DataFrame:
+) -> NetworkTable:
   '''
-  Creates a pandas DataFrame showing the network representation of the census data in census_dfs. 
+  Creates a NetworkTable showing the network representation of the census data in census_dfs. 
   Each feature present in the data is a column, and each possible path through the network is a row.
 
   Parameters:
@@ -150,7 +136,7 @@ def create_network_table(
           Whether to issue print statements about the progress of network creation. Default is true.
 
   Returns:
-      pd.DataFrame: the table.
+      NetworkTable: the table.
   '''
   return core_create_network_table(
       census_dfs=census_dfs, years=years, id=id, crs=crs, threshold=threshold, verbose=verbose)
@@ -159,10 +145,9 @@ def create_network_table(
 # Module 2: Clustering
 
 def clustering_prep(
-    network_table: pd.DataFrame, 
-    id: str, 
+    network_table: NetworkTable,
     cols: Optional[list[str]]=[]
-) -> tuple[np.ndarray[np.float64], dict[str, Any]]:
+) -> tuple[np.ndarray[np.float64], dict[str, Any], NetworkTable]:
     '''
     Converts a piccard network table into a 3d numpy array of all possible paths and their corresponding
     features. This will be used for clustering with tscluster.
@@ -172,53 +157,46 @@ def clustering_prep(
     Note that you must run pc.create_network_table() before this function.
 
     Parameters:
-        network_table (pd.DataFrame): 
+        network_table (NetworkTable): 
             The result of pc.create_network_table().
-        
-        id (str): 
-            The same id inputted into pc.create_network_table().
  
-        cols (list[str]): A list of the names of network table columns that should be considered in
+        cols (list[str] | None): A list of the names of network table columns that should be considered in
             the clustering algorithm. If none, every numerical feature will be considered. Leaving it none is
             not recommended as many numerical features, such as network level, have little bearing on the data.
 
     Returns:
-        (tuple[np.ndarray[np.float64], dict[str, Any]], pd.DataFrame):
+        (tuple[np.ndarray[np.float64], dict[str, Any]], NetworkTable):
             a tuple of a 3d numpy array, a corresponding dictionary of labels showing
             the shape of the array, and the network table modified so it doesn't include any of the NaN rows.
     '''
-    return core_clustering_prep(network_table=network_table, id=id, cols=cols)
+    return core_clustering_prep(network_table=network_table, cols=cols)
 
 
 def cluster(
-    network_table: pd.DataFrame, 
+    network_table: NetworkTable, 
     G: nx.Graph, 
-    id: str, 
     num_clusters: int, 
     algo: Optional[str]='greedy', 
     scheme: Optional[str]='z1c1', 
     arr: Optional[np.ndarray[np.float64]]=None, 
     label_dict: Optional[dict[str, Any]]=None
-) -> Union[OptTSCluster, GreedyTSCluster]:
+) -> ClusteredNetworkTable:
     '''
     Runs one of tscluster's clustering algorithms (default is fully dynamic clustering or 'z1c1')
     and adds the resulting cluster assignments to the network table and nodes as an additional feature.
     Information about the different clustering algorithms is available here: https://tscluster.readthedocs.io/en/latest/introduction.html
     We recommend either Sequential Label Analysis ('z1c0') or the default 'z1c1'.
 
-    Users can choose to only input the network table, in which case clustering_prep will be run for them with the default columns,
-    or they can choose to run clustering_prep on their own and then have the option to apply one or both of the
+    Users can choose to only input the network table, in which case core_clustering_prep will be run for them with the default columns,
+    or they can choose to run core_clustering_prep on their own and then have the option to apply one or both of the
     normalization methods available in tscluster.preprocessing.utils.
 
     Parameters:
-        network_table (pd.DataFrame): 
+        network_table (NetworkTable): 
             The result of pc.create_network_table().
 
         G (nx.Graph): 
             The result of pc.create_network().
-
-        id (str): 
-            The same id inputted into pc.create_network_table().
 
         num_clusters (int): 
             The number of clusters that the algorithm will find.
@@ -236,24 +214,23 @@ def cluster(
 
         arr (np.ndarray[np.float64] | None): 
             the array of data to be clustered. If none, arr and label_dict will be generated by running
-            pc.clustering_prep() with the default columns. See the pc.clustering_prep() documentation for why we DO NOT
+            pc.core_clustering_prep() with the default columns. See the pc.core_clustering_prep() documentation for why we DO NOT
             recommend leaving this blank.
         
         label_dict (dict[str, Any] | None): 
             the label dictionary corresponding to the data array. See 'arr'.
 
     Returns:
-        (OptTSCluster | GreedyTSCluster): 
-            an OptTSCluster or GreedyTSCluster object with useful labels, cluster assignments, etc 
-            for future visualizations.
+        ClusteredNetworkTable: 
+            The clustered network table.
     '''
     return core_cluster(
-        network_table=network_table, G=G, id=id, num_clusters=num_clusters, algo=algo, scheme=scheme, arr=arr, label_dict=label_dict)
+        network_table=network_table, G=G, num_clusters=num_clusters, algo=algo, scheme=scheme, arr=arr, label_dict=label_dict)
 
 # Module 3: Visualization & Analysis
 
 def plot_subnetwork(
-    network_table: pd.DataFrame, 
+    network_table: NetworkTable, 
     G: nx.Graph, 
     years: Optional[List[str]] = None,
     paths_to_show: Optional[List[int]] = None,
@@ -267,7 +244,7 @@ def plot_subnetwork(
     Hovering over each node shows the paths the node is part of.
 
     Parameters:
-        network_table (pd.DataFrame):
+        network_table (NetworkTable):
             The result of pc.create_network_table().
         
         G (nx.Graph):
@@ -298,7 +275,7 @@ def plot_subnetwork(
 
 
 def plot_num_areas(
-    network_table: pd.DataFrame, 
+    network_table: NetworkTable, 
     years: Optional[List[str]] = None,
 ) -> go.Figure:
     '''
@@ -306,7 +283,7 @@ def plot_num_areas(
     Note: Assumes the first column in the dataframe contains the ID.
 
     Parameters:
-        network_table (pd.DataFrame):
+        network_table (NetworkTable):
             The result of pc.create_network_table().
 
         years (List[str] | None):
@@ -320,10 +297,7 @@ def plot_num_areas(
 
 
 def plot_clusters_scatter(
-    network_table: pd.DataFrame,
-    arr: np.ndarray[np.float64],
-    label_dict: dict[str, Any],
-    tsc: Union[OptTSCluster, GreedyTSCluster],
+    network_table: ClusteredNetworkTable,
     years: Optional[List[str]] = None,
     cluster_colours: Optional[dict[int, str]] = None,
     dynamic_paths_only: Optional[bool] = True,
@@ -348,18 +322,8 @@ def plot_clusters_scatter(
     make sure the paths are numbered according to their position in network_table.
 
     Parameters:
-        network_table (pd.DataFrame):
-            The result of pc.create_network_table().
-
-        arr (np.ndarray[np.float64]):
-            The numpy array from pc.clustering_prep() that you used in pc.cluster().
-
-        label_dict (dict[str, Any]):
-            The label dictionary from pc.clustering_prep() that you used in pc.cluster(). 
-            label_dict could also be a custom label dictionary.
-        
-        tsc (Union[OptTSCluster, GreedyTSCluster]): 
-            The result of pc.cluster().
+        network_table (ClusteredNetworkTable):
+            The clustered network table.
 
         years (List[str] | None): 
             The years displayed on the map. Default is all years in the network table.
@@ -395,12 +359,12 @@ def plot_clusters_scatter(
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
     Returns:
-        (List[go.Figure]):
+        List[go.Figure]:
             a list of plotly.graph_objects.Figure (you cannot show the whole list; rather, iterate through 
             the list and show each figure)
     '''
     return visual_plot_clusters_scatter(
-        network_table=network_table, arr=arr, label_dict=label_dict, tsc=tsc, years=years,
+        network_table=network_table, years=years,
         cluster_colours=cluster_colours, dynamic_paths_only=dynamic_paths_only,
         paths_to_show=paths_to_show, ids_to_show=ids_to_show, clusters_to_show=clusters_to_show,
         clusters_to_exclude=clusters_to_exclude, figsize=figsize, cluster_labels=cluster_labels
@@ -408,7 +372,7 @@ def plot_clusters_scatter(
 
 
 def plot_clusters_parallelcats(
-    network_table: pd.DataFrame, 
+    network_table: ClusteredNetworkTable, 
     years: Optional[List[str]] = None,
     cluster_colours: Optional[dict[int, str]] = None,
     colour_index_year: Optional[str] = None,
@@ -424,10 +388,8 @@ def plot_clusters_parallelcats(
     across categories.
 
     Parameters:
-        network_table (pd.DataFrame):
-            A DataFrame containing the data. Expected to include one column per year
-            with names in the format cluster_assignment_(year), e.g., 'cluster_assignment_2016'. (This
-            will automatically be done if you have already run pc.cluster())
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[str] | None):
             A list of strings representing the time points to include, such as ['2011', '2016', '2021'].
@@ -454,7 +416,6 @@ def plot_clusters_parallelcats(
         plotly.graph_objects.Figure: 
             The interactive map
     """
-
     return visual_plot_clusters_parallelcats(
         network_table=network_table, years=years, cluster_colours=cluster_colours,
         colour_index_year=colour_index_year, cluster_labels=cluster_labels, figsize=figsize
@@ -462,7 +423,7 @@ def plot_clusters_parallelcats(
 
 
 def plot_clusters_area(
-    network_table: pd.DataFrame,
+    network_table: ClusteredNetworkTable,
     years: Optional[List[str]] = None,
     cluster_colours: Optional[dict[int, str]] = None,
     cluster_labels: Optional[List[str]] = None,
@@ -477,10 +438,8 @@ def plot_clusters_area(
     across categories.
 
     Parameters:
-        network_table (pd.DataFrame):
-            A DataFrame containing the data. Expected to include one column per year
-            with names in the format <feature_name>_<year>, e.g., 'cluster_assignment_2016'. (This
-            will automatically be done if you have already run pc.cluster())
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[str] | None):
             A list of strings representing the time points to include, such as ['2011', '2016', '2021'].
@@ -512,28 +471,26 @@ def plot_clusters_area(
 
 
 def plot_clusters_map(
+    geofile_path: str,
+    network_table: ClusteredNetworkTable,
     year: str,
-    id: Optional[str] = 'geouid',
     cluster_colours: Optional[dict[int, str]] = None,
     label_dict: Optional[dict[str, Any]] = None,
     cluster_labels: Optional[List[str]] = None,
-    geofile_path: Optional[str] = None,
-    network_table: Optional[pd.DataFrame] = None,
-    gdf: Optional[gpd.GeoDataFrame] = None,
     figsize: Optional[Tuple[float, float]] = (700, 500),
 ) -> px.choropleth:
     """
     Plots cluster assignments in their associated geographical regions for a specific year using a GeoDataFrame.
-    To properly load the geographical data, the user must provide AT LEAST ONE of the following:
-    1. geofile_path AND network_table
-    2. gdf
 
     Parameters:
+        geofile_path (str):
+            Path to geographical data file
+
+        network_table (NetworkTable):
+            Network table to be merged with GeoJSON
+
         year (str):
             Year to visualize (used in column name)
-
-        id (str):
-            Unique identifier for the geographical region and year (used in hover data). Default is 'geouid'.
 
         cluster_colours (dict[int, str] | None):
             A dict mapping cluster numbers to their corresponding colours. If None, plotly's default
@@ -548,15 +505,6 @@ def plot_clusters_map(
         cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
-        geofile_path (str | None):
-            Path to geographical data file if gdf is not passed
-
-        network_table (pd.DataFrame | None):
-            Network table to be merged with GeoJSON
-
-        gdf (GeoDataFrame | None):
-            Pre-joined GeoDataFrame (recommended for advanced users)
-
         figsize (Tuple[float, float] | None):
             A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
 
@@ -566,19 +514,17 @@ def plot_clusters_map(
     """
     return visual_plot_clusters_map(
         year=year,
-        id=id,
         cluster_colours=cluster_colours,
         label_dict=label_dict,
         cluster_labels=cluster_labels,
         geofile_path=geofile_path,
         network_table=network_table,
-        gdf=gdf,
         figsize=figsize
     )
 
 
 def plot_line_means(
-        network_table: pd.DataFrame,
+        network_table: ClusteredNetworkTable,
         selected_features: List[str],
         years: Optional[List[int]] = None,
         varnames: Optional[List[str]] = None,
@@ -595,8 +541,8 @@ def plot_line_means(
     tracks a single cluster across time, using a consistent colour per cluster.
 
     Parameters:
-        network_table (pd.DataFrame):
-            The post-clustering network table.
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[int] | None):
             Which years to plot. Default is every year in the network table.
@@ -624,7 +570,7 @@ def plot_line_means(
 
     Returns:
         plotly.graph_objects.Figure:
-            The composed line‐chart with subplots.
+            The composed line chart with subplots.
     """
     return visual_plot_line_means(
         network_table=network_table,
@@ -639,7 +585,7 @@ def plot_line_means(
 
 
 def plot_bar_means(
-        network_table: pd.DataFrame,
+        network_table: ClusteredNetworkTable,
         selected_features: List[str],
         years: Optional[List[int]] = None,
         varnames: Optional[List[str]] = None,
@@ -656,8 +602,8 @@ def plot_bar_means(
     provided `cluster_colours` mapping or default Plotly palette.
 
     Parameters:
-        network_table (pd.DataFrame):
-            The post-clustering network table.
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[int] | None):
             Which years to plot. Default is every year in the network table.
@@ -698,7 +644,7 @@ def plot_bar_means(
 
 
 def radar_chart_multiple_years(
-        network_table: pd.DataFrame,
+        network_table: ClusteredNetworkTable,
         selected_cluster: int,
         selected_features: list,
         years: Optional[List[int]] = None,
@@ -711,8 +657,8 @@ def radar_chart_multiple_years(
     Create a radar (polar) chart of selected variables for a given cluster across years
 
     Parameters:
-        network_table (pd.DataFrame):
-            The post-clustering network table.
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         years (List[int] | None):
             Which years to plot. Default is every year in the network table.
@@ -755,7 +701,7 @@ def radar_chart_multiple_years(
 
 
 def radar_chart_multiple_clusters(
-        network_table: pd.DataFrame,
+        network_table: ClusteredNetworkTable,
         selected_year: str,
         selected_features: List[str],
         clusters: Optional[List[int]] = None,
@@ -769,8 +715,8 @@ def radar_chart_multiple_clusters(
     all on the same figure, for the specified year
 
     Parameters:
-        network_table (pd.DataFrame):
-            The post-clustering network table.
+        network_table (ClusteredNetworkTable):
+            A ClusteredNetworkTable containing the data.
 
         clusters (List[int]):
             Which clusters to plot. Default is every cluster.
@@ -809,8 +755,8 @@ def radar_chart_multiple_clusters(
 
 
 def prob_reasoning_networks(
-    network_table_1: pd.DataFrame, 
-    network_table_2: pd.DataFrame, 
+    network_table_1: NetworkTable, 
+    network_table_2: NetworkTable, 
     independent_vars_1: List[str], 
     independent_vars_2: List[str], 
     dependent_vars_1: List[str], 
@@ -832,11 +778,11 @@ def prob_reasoning_networks(
     are okay.
 
     Parameters:
-        network_table_1 (pd.DataFrame): 
+        network_table_1 (NetworkTable): 
             The reference network table. Typically the network table associated with the data assumed to
             be more unbiased and reliable.
 
-        network_table_2 (pd.DataFrame):
+        network_table_2 (NetworkTable):
             The second network table whose independent and dependent variables will be joined into a probabilistic
             model of network_table_1.
         
@@ -879,7 +825,7 @@ def prob_reasoning_networks(
 
 
 def prob_reasoning_years(
-    network_table: pd.DataFrame,  
+    network_table: NetworkTable,  
     year_1: str,
     year_2: str,
     independent_vars_1: List[str], 
@@ -901,7 +847,7 @@ def prob_reasoning_years(
     are okay.
 
     Parameters:
-        network_table (pd.DataFrame): 
+        network_table (NetworkTable): 
             The network table
 
         year_1 (str):
@@ -951,6 +897,7 @@ def prob_reasoning_years(
 
 
 # Tree Functions
+
 def preprocess_census_metadata(path, type_filter = "Total"):
     """
     Preprocess census metadata from a JSON file.
@@ -968,6 +915,7 @@ def preprocess_census_metadata(path, type_filter = "Total"):
     """
         
     return TreeMaker.tree_preprocess_census_metadata(path=path, type_filter=type_filter)
+
 
 def match_descriptions_jaccard(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9):
     """
@@ -987,6 +935,7 @@ def match_descriptions_jaccard(source_df: pd.DataFrame, compare_df: pd.DataFrame
                      containing the mapping between source and comparison vectors
     """
     return TreeMaker.tree_match_descriptions_jaccard(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold)
+
 
 def match_descriptions_transformer(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
     """
@@ -1011,6 +960,7 @@ def match_descriptions_transformer(source_df: pd.DataFrame, compare_df: pd.DataF
     """
     return TreeMaker.tree_match_descriptions_transformer(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold, model_name=model_name)
 
+
 def match_descriptions_details_sentence_transformer( source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
     """
     Match descriptions using sentence transformers with optimized pre-encoding.
@@ -1030,6 +980,7 @@ def match_descriptions_details_sentence_transformer( source_df: pd.DataFrame, co
                      containing the mapping between source and comparison vectors
     """
     return TreeMaker.tree_match_descriptions_details_sentence_transformer(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold, model_name=model_name)
+
 
 def match_descriptions_multithreaded(
     source_df: pd.DataFrame,
@@ -1065,6 +1016,7 @@ def match_descriptions_multithreaded(
         max_workers=max_workers
     )
 
+
 def merge_mappings(map_descriptions, *mappings_dfs):
     """
     Merge multiple mapping DataFrames into a single consolidated mapping.
@@ -1082,6 +1034,7 @@ def merge_mappings(map_descriptions, *mappings_dfs):
                      where vector_cmp_list contains all matching vectors from all mappings
     """
     return TreeMaker.tree_merge_mappings(map_descriptions, *mappings_dfs)
+
 
 def build_tree(source_data, merged_df, tree_name, path = None):
     """
@@ -1109,6 +1062,7 @@ def build_tree(source_data, merged_df, tree_name, path = None):
     """
     return TreeMaker.tree_build_tree(source_data=source_data, merged_df=merged_df, tree_name=tree_name, path=path)
 
+
 def parse_tree_to_dict(filepath):
     """
     Parse a Graphviz tree file into a dictionary.
@@ -1125,6 +1079,7 @@ def parse_tree_to_dict(filepath):
     """
     return TreeMaker.tree_parse_tree_to_dict(filepath=filepath)
 
+
 def extract_parent_child_relationships(filepath: str) -> Dict[str, List[str]]:
     """
     Extract parent-child relationships from tree file edges.
@@ -1140,6 +1095,7 @@ def extract_parent_child_relationships(filepath: str) -> Dict[str, List[str]]:
         Dict[str, List[str]]: Dictionary mapping parent nodes to their children
     """
     return TreeMaker.tree_extract_parent_child_relationships(filepath=filepath)
+
 
 def predict_parent_nodes(tree_dict: Dict, parent_child_relationships: Dict[str, List[str]], 
                         target_years: List[str]) -> Dict[str, List[str]]:
@@ -1162,216 +1118,3 @@ def predict_parent_nodes(tree_dict: Dict, parent_child_relationships: Dict[str, 
         Dict[str, List[str]]: Dictionary mapping parent nodes to years they can be predicted in
     """
     return TreeMaker.tree_predict_parent_nodes(tree_dict=tree_dict, parent_child_relationships=parent_child_relationships, target_years=target_years)
-
-# Helpers
-
-def process_year_pair(df1, df2, year1, year2, id='GeoUID', threshold=0.05):
-    """
-    Helper for ct_containment.
-    Computes intersecting census tracts between two years and returns a filtered GeoDataFrame.
-    Applies spatial join and intersection, computes overlap area and percentage,
-    and filters by a minimum threshold of shared area.
-    """
-    return core_process_year_pair(df1=df1, df2=df2, year1=year1, year2=year2, id=id, threshold=threshold)
-
-
-def process_year_pair_wrapped(args):
-    """
-    Helper for ct_containment.
-    Wrapper for process_year_pair to enable parallel execution with ProcessPoolExecutor.
-    Unpacks arguments passed as a single tuple.
-    """
-    return process_year_pair(*args)
-
-
-def ct_containment(preprocessed_dfs, years, id='GeoUID', threshold=0.05, verbose=True):
-    '''
-    Returns a list of GeoDataFrames with tracts from one year
-    that intersect tracts from the following year, filtered by threshold.
-    Parallelizes if total data size > 20,000 rows.
-    '''
-    return core_ct_containment(preprocessed_dfs=preprocessed_dfs, years=years, id=id, threshold=threshold, verbose=verbose)
-
-
-def get_nodes(contained_tracts_df, id, threshold=0.05):
-  '''
-  Returns a GeoDataFrame with the graph connections between two census tracts
-  of different years. Each row corresponds to one edge in the final network.
-  '''
-  return core_get_nodes(contained_tracts_df=contained_tracts_df, id=id, threshold=threshold)
-
-
-def assign_node_level(row, years, id):
-  """
-  Assigns the level of a node in the network based on its relative year in the
-  network
-  Example: All 2021 nodes are in level 3 in a graph with years 2011, 2016, 2021
-  """
-  return core_assign_node_level(row=row, years=years, id=id)
-    
-
-def get_attributes(nodes, census_dfs, years, id):
-  '''
-  Returns all the attributes in the original data corresponding to the network
-  nodes
-  '''
-  return core_get_attributes(nodes=nodes, census_dfs=census_dfs, years=years, id=id)
-
-
-def find_all_paths(nodes_df, num_joins, id):
-  '''
-  Return all possible paths present in the input data.
-  Note: The resulting dataframe is not organized and does contain
-        duplicate entries in both the rows and columns.
-  '''
-
-  return core_find_all_paths(nodes_df=nodes_df, num_joins=num_joins, id=id)
-
-
-def find_full_paths(full_paths_df, final_cols):
-  '''
-  Return all full paths present in input data.
-  Note: Define a full path as a path in the network where the starting node is
-        from the first input year and the ending node is from the last input year.
-  '''
-
-  return core_find_full_paths(full_paths_df=full_paths_df, final_cols=final_cols)
-
-
-def first_year_partial_paths(all_partial_paths, years, final_cols):
-  '''
-  Return all partial paths only for the first input year.
-  Note: Define a partial path as a path in the network where the starting and
-        ending nodes are of any year (i.e., not a full path).
-  '''
-  return core_first_year_partial_paths(all_partial_paths=all_partial_paths, years=years, final_cols=final_cols)
-
-
-def unique_partial_paths(all_partial_paths, years, left_cols, final_cols):
-    '''
-    Return all unique partial paths between two consecutive input years.
-    Note: Define a partial path as a path in the network where the starting and
-        ending nodes are of any year (i.e., not a full path).
-    '''
-
-    return core_unique_partial_paths(all_partial_paths=all_partial_paths, years=years, left_cols=left_cols, final_cols=final_cols)
-
-
-def find_partial_paths(partial_paths_df, years, left_cols, final_cols, exclude_nodes):
-  '''
-  Return all partial paths present in input data.
-  Note: Define a partial path as a path in the network where the starting and
-        ending nodes are of any year (i.e., not a full path).
-  '''
-
-  return core_find_partial_paths(partial_paths_df=partial_paths_df,
-                                 years=years,
-                                 left_cols=left_cols,
-                                 final_cols=final_cols,
-                                 exclude_nodes=exclude_nodes)
-
-
-def attach_attributes(network_table, attributes, years, final_cols, id):
-  '''
-  Return network table with attached attributes corresponding to the nodes
-  involved.
-  '''
-  return core_attach_attributes(network_table=network_table, 
-                                 attributes=attributes, 
-                                 years=years, 
-                                 final_cols=final_cols, 
-                                 id=id)
-
-
-def filter_columns(
-    network_table: pd.DataFrame, 
-    years: List[str], 
-    cols: Optional[list[str]]=[]
-    ) -> Tuple[List[str], List[str]]:
-    '''
-    Checks that the list of columns with data to be clustered is valid in the following ways:
-    - Makes sure all the data in the columns are numerical or nan
-    - Makes sure there is a version of each column for every year
-
-    Parameters:
-        network_table (pd.DataFrame): 
-            The result of pc.create_network_table().
-        
-        years (List[str]): 
-            A list of years considered for clustering.
-          
-        cols (list[str] | None): A list of the names of network table columns that should be considered in
-            the clustering algorithm. If none, every numerical feature will be considered. Leaving it none is
-            not recommended as many numerical features, such as network level, have little bearing on the data.
-    
-    Returns:
-        (Tuple[List[str], List[str]], pd.DataFrame):
-            a tuple of the final filtered list of columns and the column labels that will
-            be used for the label dictionary. Also returns the possibly modified network table.
-    '''
- 
-    return core_filter_columns(network_table=network_table, years=years, cols=cols)
-
-
-def join_geometries(
-    geofile_path: str,
-    network_table: pd.DataFrame,
-    year: str,
-    geofile_id_col: Optional[str] = "GeoUID",
-    network_table_id_col: Optional[str] = "geouid"
-) -> gpd.GeoDataFrame:
-    """
-    Joins spatial data from a geographical data file with attribute data from a network table
-    using a shared geographic identifier.
-
-    This function is designed for researchers who work with pre-processed network tables
-    (containing cluster assignments, IDs, etc.) and separately downloaded spatial files
-    (like Canadian census tract GeoJSONs). It's recommended to run this function yourself
-    before plotting cluster assignments with cluster_map_plot if you are using a column id different
-    from the default 'geouid'.
-
-    Parameters:
-        geofile_path (str):
-            File path to the geographical data file for the specified year. Can be anything readable by geopandas.
-
-        network_table (pd.DataFrame):
-            DataFrame containing attribute and cluster assignment data, including unique
-            geographic identifiers for each region.
-
-        year (str):
-            The census year to match ID and cluster columns (e.g., '2016').
-
-        geofile_id_col (str | None):
-            Column name in the geographical data file that contains the geographic identifier
-            (default: 'GeoUID').
-
-        network_table_id_col (str | None):
-            Prefix of the column name in the network_table used for geographic ID matching.
-            The function expects a column like 'geouid_2016' if year='2016'.
-
-    Returns:
-        gpd.GeoDataFrame:
-            A merged GeoDataFrame containing geometry from the GeoJSON file and attribute
-            data (e.g., cluster assignments) from the network table. Only valid, non-empty
-            geometries are retained.
-    """
-    return core_join_geometries(geofile_path=geofile_path,
-                                network_table=network_table,
-                                year=year,
-                                geofile_id_col=geofile_id_col,
-                                network_table_id_col=network_table_id_col)
-
-def cluster_means_by_year(
-    network_table: pd.DataFrame,
-    years: list,
-    base_cols: list,
-    cluster_prefix: str = 'cluster_assignment'
-) -> pd.DataFrame:
-    """
-    Compute mean values of base_cols per cluster for each year,
-    and concatenate into a MultiIndex DataFrame (variable, year).
-    """
-    return core_cluster_means_by_year(network_table=network_table, 
-                                       years=years, 
-                                       base_cols=base_cols, 
-                                       cluster_prefix=cluster_prefix)

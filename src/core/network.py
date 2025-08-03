@@ -1,5 +1,5 @@
 import warnings
-from typing import Optional, Any, Tuple, Union, List
+from typing import Optional, List
 import geopandas as gpd
 from pyproj.crs import CRS
 from shapely import buffer
@@ -15,6 +15,33 @@ try:
 except ImportError:
     SWIFTER_AVAILABLE = False
 import shapely
+
+class NetworkTable():
+    '''
+    A table showing the network representation of census data. 
+    Each feature present in the data is a column, and each possible path through the network is a row.
+    '''
+    def __init__(
+        self,
+        table: pd.DataFrame,
+        years: list[str],
+        id: str
+    ):
+        '''
+        Constructor
+        '''
+        self.table = table
+        self.years = years
+        self.id = id
+    
+    def modify_table(
+        self,
+        new_table: pd.DataFrame
+    ):
+        '''
+        Modifies the table.
+        '''
+        self.table = new_table
 
 def core_preprocessing(
     data: gpd.GeoDataFrame, 
@@ -154,9 +181,9 @@ def core_create_network_table(
     crs: Optional[CRS] = "EPSG:3347",
     threshold: Optional[float] = 0.05,
     verbose: Optional[bool] = True
-) -> pd.DataFrame:
+) -> NetworkTable:
   '''
-  Creates a pandas DataFrame showing the network representation of the census data in census_dfs. 
+  Creates a NetworkTable showing the network representation of the census data in census_dfs. 
   Each feature present in the data is a column, and each possible path through the network is a row.
 
   Parameters:
@@ -184,7 +211,7 @@ def core_create_network_table(
           Whether to issue print statements about the progress of network creation. Default is true.
 
   Returns:
-      pd.DataFrame: the table.
+      NetworkTable: the table.
   '''
   num_years = len(years)
   num_joins = math.ceil(num_years/2)
@@ -236,36 +263,7 @@ def core_create_network_table(
   if verbose:
       print('Table created')
 
-  return final_table
-
-def core_attach_attributes(network_table, attributes, years, final_cols, id):
-  '''
-  Return network table with attached attributes corresponding to the nodes
-  involved.
-  '''
-  years_df_list = []
-
-  for i in range(len(final_cols)):
-      col = str(final_cols[i])
-
-      #Getting attributes for each year
-      table_col = network_table[col].to_frame().astype(object)
-      curr_year = table_col.merge(attributes, how='left', left_on=col, right_on=id)
-      curr_year = curr_year.drop([id], axis=1)
-
-      #Suppressing warning for str.replace
-      with warnings.catch_warnings():
-          warnings.simplefilter(action='ignore', category=FutureWarning)
-          curr_year = curr_year.apply(lambda x: x.str.replace(r'[0-9]+_', '') if x.dtypes==object else x).reset_index(drop=True)
-
-          #Formatting all columns as 'colname_year'
-          curr_year_cols = [f'{col}_{years[i]}' if col != final_cols[i] and col != f'area_{years[i]}' else col for col in curr_year.columns]
-          curr_year.columns = curr_year_cols
-          years_df_list.append(curr_year)
-
-  #Combining all years dfs into one
-  network_table = (pd.concat(years_df_list, axis=1)).dropna(how='all', axis=1)
-  return network_table
+  return NetworkTable(final_table, years, id)
 
 # -----------------------Helper Functions-----------------------
 
@@ -394,10 +392,8 @@ def core_get_attributes(nodes, census_dfs, years, id):
 
 def core_join_geometries(
     geofile_path: str,
-    network_table: pd.DataFrame,
+    network_table: NetworkTable,
     year: str,
-    geofile_id_col: Optional[str] = "GeoUID",
-    network_table_id_col: Optional[str] = "geouid"
 ) -> gpd.GeoDataFrame:
     """
     Joins spatial data from a geographical data file with attribute data from a network table
@@ -405,28 +401,18 @@ def core_join_geometries(
 
     This function is designed for researchers who work with pre-processed network tables
     (containing cluster assignments, IDs, etc.) and separately downloaded spatial files
-    (like Canadian census tract GeoJSONs). It's recommended to run this function yourself
-    before plotting cluster assignments with cluster_map_plot if you are using a column id different
-    from the default 'geouid'.
+    (like Canadian census tract GeoJSONs).
 
     Parameters:
         geofile_path (str):
             File path to the geographical data file for the specified year. Can be anything readable by geopandas.
 
-        network_table (pd.DataFrame):
-            DataFrame containing attribute and cluster assignment data, including unique
+        network_table (NetworkTable):
+            NetworkTable containing attribute and cluster assignment data, including unique
             geographic identifiers for each region.
 
         year (str):
             The census year to match ID and cluster columns (e.g., '2016').
-
-        geofile_id_col (str | None):
-            Column name in the geographical data file that contains the geographic identifier
-            (default: 'GeoUID').
-
-        network_table_id_col (str | None):
-            Prefix of the column name in the network_table used for geographic ID matching.
-            The function expects a column like 'geouid_2016' if year='2016'.
 
     Returns:
         gpd.GeoDataFrame:
@@ -434,21 +420,22 @@ def core_join_geometries(
             data (e.g., cluster assignments) from the network table. Only valid, non-empty
             geometries are retained.
     """
-
+    table = network_table.table
+    network_table_id_col = network_table.id
     # Validate input column name
     geoid_col = f"{network_table_id_col}_{year}"
-    if geoid_col not in network_table.columns:
-        raise ValueError(f"Expected column '{geoid_col}' not found in network_table.")
+    if geoid_col not in table.columns:
+        raise ValueError(f"Expected column '{geoid_col}' not found in table.")
 
     # Read the GeoJSON file into a GeoDataFrame
     gdf = gpd.read_file(geofile_path)
 
     # Prepare a clean copy of the network table and standardize the ID format
-    network_table_copy = network_table.copy(deep=True)
-    network_table_copy[geoid_col] = network_table_copy[geoid_col].astype(str).str.replace(r'^\d{4}_', '', regex=True)
+    table_copy = table.copy(deep=True)
+    table_copy[geoid_col] = table_copy[geoid_col].astype(str).str.replace(r'^\d{4}_', '', regex=True)
 
     # Merge the GeoDataFrame with the network table using the geographic ID
-    merged_gdf = gdf.merge(network_table_copy, left_on=geofile_id_col, right_on=geoid_col)
+    merged_gdf = gdf.merge(table_copy, left_on=network_table_id_col, right_on=geoid_col)
 
     # Remove empty or invalid geometries
     merged_gdf = merged_gdf[~merged_gdf.is_empty & merged_gdf.geometry.notnull()]
@@ -590,3 +577,32 @@ def core_unique_partial_paths(all_partial_paths, years, left_cols, final_cols):
 
     return unique_partials
 
+
+def core_attach_attributes(network_table, attributes, years, final_cols, id):
+  '''
+  Return network table with attached attributes corresponding to the nodes
+  involved.
+  '''
+  years_df_list = []
+
+  for i in range(len(final_cols)):
+      col = str(final_cols[i])
+
+      #Getting attributes for each year
+      table_col = network_table[col].to_frame().astype(object)
+      curr_year = table_col.merge(attributes, how='left', left_on=col, right_on=id)
+      curr_year = curr_year.drop([id], axis=1)
+
+      #Suppressing warning for str.replace
+      with warnings.catch_warnings():
+          warnings.simplefilter(action='ignore', category=FutureWarning)
+          curr_year = curr_year.apply(lambda x: x.str.replace(r'[0-9]+_', '') if x.dtypes==object else x).reset_index(drop=True)
+
+          #Formatting all columns as 'colname_year'
+          curr_year_cols = [f'{col}_{years[i]}' if col != final_cols[i] and col != f'area_{years[i]}' else col for col in curr_year.columns]
+          curr_year.columns = curr_year_cols
+          years_df_list.append(curr_year)
+
+  #Combining all years dfs into one
+  network_table = (pd.concat(years_df_list, axis=1)).dropna(how='all', axis=1)
+  return network_table

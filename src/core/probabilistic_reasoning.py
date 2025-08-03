@@ -1,11 +1,11 @@
-
 import pandas as pd
+from network import NetworkTable
 from typing import Optional, List
 from p_frame import PDataFrame
 
 def core_prob_reasoning_networks(
-    network_table_1: pd.DataFrame, 
-    network_table_2: pd.DataFrame, 
+    network_table_1: NetworkTable, 
+    network_table_2: NetworkTable, 
     independent_vars_1: List[str], 
     independent_vars_2: List[str], 
     dependent_vars_1: List[str], 
@@ -27,11 +27,11 @@ def core_prob_reasoning_networks(
     are okay.
 
     Parameters:
-        network_table_1 (pd.DataFrame): 
+        network_table_1 (NetworkTable): 
             The reference network table. Typically the network table associated with the data assumed to
             be more unbiased and reliable.
 
-        network_table_2 (pd.DataFrame):
+        network_table_2 (NetworkTable):
             The second network table whose independent and dependent variables will be joined into a probabilistic
             model of network_table_1.
         
@@ -63,16 +63,18 @@ def core_prob_reasoning_networks(
 
     TODO: Finish handling mismatches by modifying network tables
     '''
+    table_1 = network_table_1.table
+    table_2 = network_table_2.table
     if set(independent_vars_1).union(set(independent_vars_2)) != set(independent_vars_1):
         raise ValueError("Please make sure independent_vars_2 contains only variables that are also in independent_vars_1.")
     all_vars_1 = independent_vars_1 + dependent_vars_1
     all_vars_2 = independent_vars_2 + dependent_vars_2
-    pdf_1 = PDataFrame(independent_vars = independent_vars_1, data = network_table_1[all_vars_1])
-    pdf_2 = PDataFrame(independent_vars = independent_vars_2, data = network_table_2[all_vars_2])
+    pdf_1 = PDataFrame(independent_vars = independent_vars_1, data = table_1[all_vars_1])
+    pdf_2 = PDataFrame(independent_vars = independent_vars_2, data = table_2[all_vars_2])
     # modify network tables according to mismatches if necessary
     joined_pdf = pdf_1.pjoin(pdf_2, mismatches=mismatches)
     if mismatches is not None and modify_tables:
-        if any(mismatch not in network_table_1.columns or mismatch not in network_table_2.columns for mismatch in mismatches.keys()):
+        if any(mismatch not in table_1.columns or mismatch not in table_2.columns for mismatch in mismatches.keys()):
             raise ValueError("Please make sure mismatch keys correspond to columns in network tables.")
         for var in mismatches.keys():
             cpd = joined_pdf.bayes_net.get_cpds(var)
@@ -84,7 +86,7 @@ def core_prob_reasoning_networks(
 
 
 def core_prob_reasoning_years(
-    network_table: pd.DataFrame,  
+    network_table: NetworkTable,  
     year_1: str,
     year_2: str,
     independent_vars_1: List[str], 
@@ -106,7 +108,7 @@ def core_prob_reasoning_years(
     are okay.
 
     Parameters:
-        network_table (pd.DataFrame): 
+        network_table (NetworkTable): 
             The network table
 
         year_1 (str):
@@ -152,20 +154,21 @@ def core_prob_reasoning_years(
     all_vars_1 = independent_vars_1 + dependent_vars_1
     all_vars_2 = independent_vars_2 + dependent_vars_2
     # removing year from column names
-    network_table_1 = network_table[all_vars_1]
+    table = network_table.table
+    table_1 = table[all_vars_1]
     for var in all_vars_1:
-        network_table_1[var[:-5]] = network_table_1[var]
-        network_table_1.drop(columns=[f'{var}'], inplace=True)
-    network_table_2 = network_table[all_vars_2]
+        table_1[var[:-5]] = table_1[var]
+        table_1.drop(columns=[f'{var}'], inplace=True)
+    table_2 = table[all_vars_2]
     for var in all_vars_2:
-        network_table_2[var[:-5]] = network_table_2[var]
-        network_table_2.drop(columns=[f'{var}'], inplace=True)
-    pdf_1 = PDataFrame(independent_vars = [var[:-5] for var in independent_vars_1], data = network_table_1)
-    pdf_2 = PDataFrame(independent_vars = [var[:-5] for var in independent_vars_2], data = network_table_2)
+        table_2[var[:-5]] = table_2[var]
+        table_2.drop(columns=[f'{var}'], inplace=True)
+    pdf_1 = PDataFrame(independent_vars = [var[:-5] for var in independent_vars_1], data = table_1)
+    pdf_2 = PDataFrame(independent_vars = [var[:-5] for var in independent_vars_2], data = table_2)
     # modify network tables according to mismatches if necessary
     joined_pdf = pdf_1.pjoin(pdf_2, mismatches=mismatches)
     if mismatches is not None and modify_tables:
-        if any(mismatch not in network_table.columns for mismatch in mismatches.keys()):
+        if any(mismatch not in table.columns for mismatch in mismatches.keys()):
             raise ValueError("Please make sure mismatch keys correspond to columns in network tables.")
         for var in mismatches.keys():
             cpd = joined_pdf.bayes_net.get_cpds(var)
@@ -173,4 +176,3 @@ def core_prob_reasoning_years(
             # if cpd is not None:
                 # fixed_states = cpd.state_names[cpd.variable]
     return joined_pdf
-

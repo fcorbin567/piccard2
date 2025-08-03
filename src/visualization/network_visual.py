@@ -4,9 +4,13 @@ import networkx as nx
 import plotly.graph_objects as go
 from core import probabilistic_reasoning as pc
 import pandas as pd
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from core.network import NetworkTable
 
 def visual_plot_subnetwork(
-    network_table: pd.DataFrame, 
+    network_table: NetworkTable, 
     G: nx.Graph, 
     years: Optional[List[str]] = None,
     paths_to_show: Optional[List[int]] = None,
@@ -20,7 +24,7 @@ def visual_plot_subnetwork(
     Hovering over each node shows the paths the node is part of.
 
     Parameters:
-        network_table (pd.DataFrame):
+        network_table (NetworkTable):
             The result of pc.create_network_table().
         
         G (nx.Graph):
@@ -46,8 +50,9 @@ def visual_plot_subnetwork(
         go.Figure: 
             The interactive subnetwork plot.
     """
+    table = network_table.table
     # create valid list of years
-    all_years = sorted(list({int(year[0][:4]) for year in G.nodes(data=True)}))
+    all_years = network_table.years
     if years is None:
         years = all_years
     else:
@@ -58,7 +63,7 @@ def visual_plot_subnetwork(
     years = [str(year) for year in years]
 
     # organize node names by year and network table path number
-    paths_for_each_year = [list(network_table[network_table.columns[i]]) for i in range(len(years))]
+    paths_for_each_year = [list(table[table.columns[i]]) for i in range(len(years))]
 
     # prepare nodes to be graphed
     sample_nodes = []
@@ -150,7 +155,7 @@ def visual_plot_subnetwork(
     return fig
 
 def visual_plot_num_areas(
-    network_table: pd.DataFrame, 
+    network_table: NetworkTable, 
     years: Optional[List[str]] = None,
 ) -> go.Figure:
     '''
@@ -158,7 +163,7 @@ def visual_plot_num_areas(
     Note: Assumes the first column in the dataframe contains the ID.
 
     Parameters:
-        network_table (pd.DataFrame):
+        network_table (NetworkTable):
             The result of pc.create_network_table().
 
         years (List[str] | None):
@@ -168,15 +173,15 @@ def visual_plot_num_areas(
         go.Figure:
             The plot of the number of geographical areas.
     '''
-    id_label = network_table.columns[0][:-5]
+    table = network_table.table
+    id_label = network_table.id
     if years is None:
-        year_cols = [col for col in network_table.columns.to_list() if id_label in col]
-        years = sorted(list({col[-4:] for col in year_cols}))
+        years = network_table.years
 
     ct_per_year = []
     num_years = len(years)
     for i in range(num_years):
-        ids_list = list(network_table[network_table.columns[i]])
+        ids_list = list(table[table.columns[i]])
         ct_per_year.append(len({id for id in ids_list}))
 
     fig = go.Figure()
@@ -198,4 +203,3 @@ def visual_plot_num_areas(
     )
 
     return fig
-
