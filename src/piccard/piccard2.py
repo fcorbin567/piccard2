@@ -868,7 +868,7 @@ def prob_reasoning_networks(
 
     TODO: Finish handling mismatches by modifying network tables
     '''
-    return core_prob_reasoning_networks(netwrok_table_1=network_table_1,
+    return core_prob_reasoning_networks(network_table_1=network_table_1,
                                         network_table_2=network_table_2,
                                         independent_vars_1=independent_vars_1,
                                         independent_vars_2=independent_vars_2,
