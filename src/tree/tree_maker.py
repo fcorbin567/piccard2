@@ -10,7 +10,12 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from pathlib import Path
 from typing import Dict, List, Tuple, Set, Optional
-from multithreaded_mapping import thread_match_descriptions_multithreaded
+# import sys
+# import os
+
+# # Add "src" to sys.path
+# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from .multithreaded_mapping import thread_match_descriptions_multithreaded
 nltk.download('stopwords')
 
 
