@@ -935,36 +935,16 @@ def prob_reasoning_years(
 
     TODO: Finish handling mismatches by modifying network tables
     '''
-    if any(var[-4:] != year_1 for var in list(set(independent_vars_1) | set(dependent_vars_1))):
-        raise ValueError("Please make sure all variables in independent_vars_1 and dependent_vars_1 end in year_1.")
-    if any(var[-4:] != year_2 for var in list(set(independent_vars_2) | set(dependent_vars_2))):
-        raise ValueError("Please make sure all variables in independent_vars_2 and dependent_vars_2 end in year_2.")
-    if set([var[:-4] for var in independent_vars_1]).union(set([var[:-4] for var in independent_vars_2])) != set([var[:-4] for var in independent_vars_1]):
-        raise ValueError("Please make sure independent_vars_2 (excluding years) contains only variables that are also in independent_vars_1 (excluding years).")
-    all_vars_1 = independent_vars_1 + dependent_vars_1
-    all_vars_2 = independent_vars_2 + dependent_vars_2
-    # removing year from column names
-    network_table_1 = network_table[all_vars_1]
-    for var in all_vars_1:
-        network_table_1[var[:-5]] = network_table_1[var]
-        network_table_1.drop(columns=[f'{var}'], inplace=True)
-    network_table_2 = network_table[all_vars_2]
-    for var in all_vars_2:
-        network_table_2[var[:-5]] = network_table_2[var]
-        network_table_2.drop(columns=[f'{var}'], inplace=True)
-    pdf_1 = PDataFrame(independent_vars = [var[:-5] for var in independent_vars_1], data = network_table_1)
-    pdf_2 = PDataFrame(independent_vars = [var[:-5] for var in independent_vars_2], data = network_table_2)
-    # modify network tables according to mismatches if necessary
-    joined_pdf = pdf_1.pjoin(pdf_2, mismatches=mismatches)
-    if mismatches is not None and modify_tables:
-        if any(mismatch not in network_table.columns for mismatch in mismatches.keys()):
-            raise ValueError("Please make sure mismatch keys correspond to columns in network tables.")
-        for var in mismatches.keys():
-            cpd = joined_pdf.bayes_net.get_cpds(var)
-            # handle mismatches here!!
-            # if cpd is not None:
-                # fixed_states = cpd.state_names[cpd.variable]
-    return joined_pdf
+    return core_prob_reasoning_years(
+        network_table=network_table,
+        year_1=year_1,
+        year_2=year_2,
+        independent_vars_1=independent_vars_1,
+        independent_vars_2=independent_vars_2,
+        dependent_vars_1=dependent_vars_1,
+        dependent_vars_2=dependent_vars_2,
+        mismatches=mismatches,
+        modify_tables=modify_tables)
 
 
 # Tree Functions
