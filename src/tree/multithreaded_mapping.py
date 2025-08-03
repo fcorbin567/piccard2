@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import TreeMaker to use its utility functions
-from tree_maker.Tree_maker import TreeMaker
+# Note: This import is moved to function level to avoid circular imports
 
 class ThreadSafeMappingManager:
     """
@@ -92,6 +92,9 @@ def find_similarity_candidates(source_description: str,
     Returns:
         List of (similarity_score, compare_idx, compare_vector) sorted by score descending
     """
+    # Import here to avoid circular import
+    from tree.tree_maker import TreeMaker
+    
     candidates = []
     
     for compare_idx, compare_row in compare_data.iterrows():

@@ -26,7 +26,7 @@ from core.network import *
 from core.probabilistic_reasoning import *
 from visualization.network_visual import *
 from visualization.cluster_plots import *
-from tree_maker.Tree_maker import TreeMaker
+from tree.tree_maker import TreeMaker
 # Module 1: Network Creation
 
 def preprocessing(

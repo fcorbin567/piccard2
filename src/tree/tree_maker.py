@@ -10,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from pathlib import Path
 from typing import Dict, List, Tuple, Set, Optional
-from tree_maker.multithreaded_mapping import thread_match_descriptions_multithreaded
+from multithreaded_mapping import thread_match_descriptions_multithreaded
 nltk.download('stopwords')
 
 
