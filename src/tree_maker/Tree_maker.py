@@ -10,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from pathlib import Path
 from typing import Dict, List, Tuple, Set, Optional
-
+from tree_maker.multithreaded_mapping import thread_match_descriptions_multithreaded
 nltk.download('stopwords')
 
 
@@ -26,7 +26,7 @@ class TreeMaker:
     """
     
     @staticmethod
-    def preprocess_census_metadata(path, type_filter = "Total"):
+    def tree_preprocess_census_metadata(path, type_filter = "Total"):
         """
         Preprocess census metadata from a JSON file.
         
@@ -122,7 +122,7 @@ class TreeMaker:
         return text
 
     @staticmethod
-    def match_descriptions_jaccard(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9):
+    def tree_match_descriptions_jaccard(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9):
         """
         Match descriptions between two DataFrames using Jaccard similarity.
         
@@ -188,7 +188,7 @@ class TreeMaker:
         return pd.DataFrame(mapping_records)
 
     @staticmethod
-    def match_descriptions_transformer(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
+    def tree_match_descriptions_transformer(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
         """
         Match descriptions between two DataFrames using sentence transformers.
         
@@ -281,7 +281,7 @@ class TreeMaker:
         return pd.DataFrame(mapping_records)
 
     @staticmethod
-    def match_descriptions_details_sentence_transformer( source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
+    def tree_match_descriptions_details_sentence_transformer( source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
         """
         Match descriptions using sentence transformers with optimized pre-encoding.
         
@@ -405,7 +405,41 @@ class TreeMaker:
         return pd.DataFrame(mapping_records)
 
     @staticmethod
-    def merge_mappings(map_descriptions, *mappings_dfs):
+    def tree_match_descriptions_multithreaded(
+        source_df: pd.DataFrame,
+        compare_df: pd.DataFrame,
+        similarity_threshold: float = 0.9,
+        max_workers: int = 4
+    ) -> pd.DataFrame:
+        """
+        Multithreaded version of map_descriptions with enhanced similarity matching.
+        
+        Performs a two-pass matching approach with multithreaded similarity processing:
+        1. First pass: Exact description matches (single-threaded)
+        2. Second pass: Similarity matches for unmatched descriptions (multithreaded)
+        
+        Changes in behavior compared to single-threaded version:
+        1. Uses mutual exclusion to ensure thread-safe mapping
+        2. Processes similarity matching in parallel
+        
+        Args:
+            source_df (pd.DataFrame): Source DataFrame with columns ['vector', 'description']
+            compare_df (pd.DataFrame): Compare DataFrame with columns ['vector', 'description']
+            similarity_threshold (float): Minimum similarity threshold (default: 0.9)
+            max_workers (int): Maximum number of worker threads (default: 4)
+            
+        Returns:
+            pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
+                        containing the mapping between source and comparison vectors
+        """
+        return thread_match_descriptions_multithreaded(source_df= source_df, 
+                                                       compare_df=compare_df, 
+                                                       similarity_threshold=similarity_threshold, 
+                                                       max_workers=max_workers)
+
+
+    @staticmethod
+    def tree_merge_mappings(map_descriptions, *mappings_dfs):
         """
         Merge multiple mapping DataFrames into a single consolidated mapping.
         
@@ -455,7 +489,7 @@ class TreeMaker:
         return result_df
 
     @staticmethod
-    def build_tree(source_data, merged_df, tree_name, path = None):
+    def tree_build_tree(source_data, merged_df, tree_name, path = None):
         """
 
         
@@ -568,7 +602,7 @@ class TreeMaker:
         return dot
 
     @staticmethod
-    def parse_tree_to_dict(filepath):
+    def tree_parse_tree_to_dict(filepath):
         """
         Parse a Graphviz tree file into a dictionary.
         
@@ -630,10 +664,8 @@ class TreeMaker:
         # Return the complete parsed tree dictionary
         return tree_dict
 
-
-
     @staticmethod
-    def extract_parent_child_relationships(filepath: str) -> Dict[str, List[str]]:
+    def tree_extract_parent_child_relationships(filepath: str) -> Dict[str, List[str]]:
         """
         Extract parent-child relationships from tree file edges.
         
@@ -679,7 +711,7 @@ class TreeMaker:
         return dict(parent_child_relationships)
 
     @staticmethod
-    def predict_parent_nodes(tree_dict: Dict, parent_child_relationships: Dict[str, List[str]], 
+    def tree_predict_parent_nodes(tree_dict: Dict, parent_child_relationships: Dict[str, List[str]], 
                             target_years: List[str] = ['2016', '2011', '2006']) -> Dict[str, List[str]]:
         """
         Predict parent nodes in other years using the additive property.
@@ -766,5 +798,4 @@ class TreeMaker:
         
         # Return the final predictions dictionary
         return predictions
-
 

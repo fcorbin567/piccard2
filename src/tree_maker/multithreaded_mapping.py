@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import TreeMaker to use its utility functions
-from TreeMaker import TreeMaker
+from tree_maker.Tree_maker import TreeMaker
 
 class ThreadSafeMappingManager:
     """
@@ -148,7 +148,7 @@ def process_similarity_mapping(record: Dict,
     return record
 
 
-def match_descriptions_multithreaded(
+def thread_match_descriptions_multithreaded(
     source_df: pd.DataFrame,
     compare_df: pd.DataFrame,
     similarity_threshold: float = 0.9,

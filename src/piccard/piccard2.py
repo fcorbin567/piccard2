@@ -1,39 +1,32 @@
 # network creation
-import math
 import numpy as np
 import geopandas as gpd
-import shapely
-try:
-    import swifter
-    SWIFTER_AVAILABLE = True
-except ImportError:
-    SWIFTER_AVAILABLE = False
-from concurrent.futures import ProcessPoolExecutor
-# clustering
+
+# # clustering
 from tscluster.opttscluster import OptTSCluster
 from tscluster.greedytscluster import GreedyTSCluster
-from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
 # visualizations and analysis
-import random
 import plotly
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from itertools import cycle, islice
 from p_frame import PDataFrame
 # type annotations
 import pandas as pd
 import networkx as nx
-from typing import Union, Any, List, Tuple, Optional
+from typing import Union, Any, List, Tuple, Optional, Dict, Callable, Iterable
 from pyproj import CRS
-from pyproj.exceptions import CRSError
 
 import warnings
 warnings.filterwarnings('ignore')
 
 import sys
 import os
-
+from core.clustering import *
+from core.network import *
+from core.probabilistic_reasoning import *
+from visualization.network_visual import *
+from visualization.cluster_plots import *
+from tree_maker.Tree_maker import TreeMaker
 # Module 1: Network Creation
 
 def preprocessing(
@@ -68,43 +61,7 @@ def preprocessing(
     Returns:
         GeoDataFrame: the cleaned data
     '''
-    process_data = data.copy()
-
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', category=UserWarning)
-
-        try:
-            if process_data.crs != crs:
-                process_data = process_data.to_crs(crs=crs)
-        except CRSError:
-            raise CRSError(f"{crs} is not a valid CRS")
-
-        # Identify complex geometries
-        def is_complex(g):
-            try:
-                return g.geom_type == 'Polygon' and len(g.exterior.coords) > 500
-            except:
-                return False
-        
-        # identify whether to run buffering in parallel
-        use_swifter = SWIFTER_AVAILABLE and len(process_data) > 100_000 # more than 100,000 rows
-        complexity_check = (
-            process_data.geometry.swifter.apply(is_complex)
-            if use_swifter else process_data.geometry.apply(is_complex)
-        )
-
-        if complexity_check.any():
-            if verbose:
-                print(f"PREPROCESSING: buffering {complexity_check.sum()} complex geometries with shapely.buffer()...")
-            geom_to_buffer = process_data.loc[complexity_check, 'geometry']
-            buffered = shapely.buffer(geom_to_buffer.values, -0.000001)
-            process_data.loc[complexity_check, 'geometry'] = buffered
-
-        process_data[f'area_{year}'] = process_data.geometry.area
-
-        process_data[id] = f"{year}_" + process_data[id].astype(str)
-
-    return process_data 
+    return core_preprocessing(data=data, year=year, id=id, crs=crs, verbose=verbose) 
 
 
 def create_network(
@@ -150,23 +107,7 @@ def create_network(
           created in the new network representation.
 
   '''
-  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id, crs=crs, verbose=verbose) for i in range(len(census_dfs))]
-  if verbose:
-      print(f'Preprocessing complete')
-  contained_cts = ct_containment(preprocessed_dfs, years, id, threshold, verbose)
-  nodes = get_nodes(contained_cts, id, threshold)
-  if verbose:
-      print('All nodes found')
-  attributes = get_attributes(nodes, census_dfs, years, id)
-  if verbose:
-      print('All attributes found')
-
-  G = nx.from_pandas_edgelist(nodes, f'{id}_1', f'{id}_2')
-  nx.set_node_attributes(G, attributes.set_index(id).to_dict('index'))
-  if verbose:
-      print('Graph created')
-
-  return G
+  return core_create_network(census_dfs=census_dfs, years=years, id=id, crs=crs, threshold=threshold, verbose=verbose)
 
 
 def create_network_table(
@@ -208,57 +149,8 @@ def create_network_table(
   Returns:
       pd.DataFrame: the table.
   '''
-  num_years = len(years)
-  num_joins = math.ceil(num_years/2)
-  final_cols = [id + '_' + col_name for col_name in years]
-  network_table = pd.DataFrame()
-  drop_cols = final_cols[1:]
-
-  preprocessed_dfs = [preprocessing(census_dfs[i], years[i], id, crs, verbose) for i in range(len(census_dfs))]
-  if verbose:
-      print('Preprocessing complete')
-  contained_cts = ct_containment(preprocessed_dfs, years, id, threshold, verbose)
-  nodes = get_nodes(contained_cts, id, threshold)
-  if verbose:
-      print('All nodes found')
-
-  #all_paths returns a three item tuple
-  all_paths = find_all_paths(nodes, num_joins, id)
-  all_paths_df = all_paths[0]
-  left_cols = all_paths[1]
-
-  #Dividing all network paths into full paths and partial paths
-  na_df = all_paths_df[all_paths_df.isnull().any(axis=1)]
-  no_na_df = all_paths_df[~all_paths_df.isnull().any(axis=1)]
-
-  full_paths = find_full_paths(no_na_df, final_cols)
-  full_paths_list = full_paths.to_numpy().flatten()
-
-  partial_paths = find_partial_paths(na_df, years, left_cols, final_cols, full_paths_list)
-  if verbose:
-      print('All possible paths through the graph found')
-
-  network_table = pd.concat([full_paths, partial_paths])
-  network_table = network_table[final_cols]
-  network_table = network_table.T.drop_duplicates().T
-  network_table = network_table.drop_duplicates(subset=drop_cols, keep='last')
-  network_table.sort_values(by=final_cols[0], ignore_index=True)
-
-  attributes = get_attributes(nodes, census_dfs, years, id)
-  final_table = attach_attributes(network_table, attributes, years, final_cols, id)
-  if verbose:
-      print('All attributes found')
-
-  #Formatting final table columns
-  for i in range(len(final_cols)):
-      col = str(final_cols[i])
-      popped = final_table.pop(col)
-      final_table.insert(i, popped.name, popped)
-  final_table.columns= final_table.columns.str.lower()
-  if verbose:
-      print('Table created')
-
-  return final_table
+  return core_create_network_table(
+      census_dfs=census_dfs, years=years, id=id, crs=crs, threshold=threshold, verbose=verbose)
 
 
 # Module 2: Clustering
@@ -292,67 +184,7 @@ def clustering_prep(
             a tuple of a 3d numpy array, a corresponding dictionary of labels showing
             the shape of the array, and the network table modified so it doesn't include any of the NaN rows.
     '''
-    # default to considering all features
-    if cols == []:
-        cols = network_table.columns.to_list()
-
-    # Find all years present in the data. These will be used as timesteps for tscluster.
-    year_cols = [col for col in network_table.columns.to_list() if id.lower() in col.lower()]
-    years = sorted(list({col[-4:] for col in year_cols}))
-
-    # Filter columns
-    filtered_cols = filter_columns(network_table, years, cols)
-    network_table = filtered_cols[2]
-
-    # Extract features for each year and add them to a 2D array representing that year. 
-    # Then add that array to a list of arrays representing the 3D array used for tscluster.
-    list_of_arrays = []
-    for year in years:
-        year_statistics = network_table[[col for col in filtered_cols[0] if year in col]].to_numpy()
-        list_of_arrays.append(year_statistics)
-    
-    # Filter out entities whose features are entirely NaN
-    # Run load_data now so we get access to variables necessary for tnf_to_ntf
-    list_of_arrays = load_data(list_of_arrays)[0]
-    ntf_list_of_arrays = tnf_to_ntf(list_of_arrays)
-    # Interpolate remaining nan values for clustering
-    clean_entities = []
-    index = -1
-    for entity in ntf_list_of_arrays:
-        index += 1
-        transposed_entity = entity.T
-        valid = True
-        for i, row in enumerate(transposed_entity):
-            nans = np.isnan(row)
-            x = np.arange(len(row))
-            if np.all(nans):
-                valid = False  # entire row is NaN, skip entity
-                network_table = network_table.drop(index=index)
-                index -= 1
-                break
-            elif np.any(nans):
-                transposed_entity[i] = np.interp(x, x[~nans], row[~nans])
-        if valid:
-            clean_entities.append(transposed_entity.T)
-
-    # Convert to 3D numpy array
-    if len(clean_entities) == 0:
-        raise ValueError("All entities were invalid (contained all-NaN rows). No data left for clustering.")
-    try:
-        list_of_arrays = np.stack(clean_entities)  # shape: (N entities, T time, F features)
-    except ValueError as e:
-        raise ValueError("Entities have inconsistent shapes and cannot be stacked.") from e
-    
-    list_of_arrays = ntf_to_tnf(list_of_arrays)
-                
-    # Return the final numpy array and create a corresponding label dictionary.
-    # This can then be preprocessed using tscluster's scalers.
-    label_dict = {
-    'T': years,
-    'N': list(range(list_of_arrays.shape[1])),
-    'F': filtered_cols[1]
-    }
-    return (list_of_arrays, label_dict, network_table)
+    return core_clustering_prep(network_table=network_table, id=id, cols=cols)
 
 
 def cluster(
@@ -412,65 +244,8 @@ def cluster(
             an OptTSCluster or GreedyTSCluster object with useful labels, cluster assignments, etc 
             for future visualizations.
     '''
-    # Get the data into the correct format. See the documentation for clustering_prep
-    if arr is None and label_dict is None:
-        arr, label_dict = clustering_prep(network_table, id)
-    
-    # Ensure valid scheme
-    if scheme.lower() != 'z0c0' and scheme.lower() != 'z0c1' and scheme.lower() != 'z1c0' and scheme.lower() != 'z1c1':
-        raise ValueError("Please ensure scheme is either z0c0, z0c1, z1c0, or z1c1. See tscluster documentation.")
-
-    # Initialize the model
-    if algo.lower() == 'opt':
-        tsc = OptTSCluster(
-            n_clusters=num_clusters,
-            scheme=scheme,
-            n_allow_assignment_change=None, # Allow as many changes as possible
-            random_state=3
-        )
-    elif algo.lower() == 'greedy':
-        tsc = GreedyTSCluster(
-            n_clusters=num_clusters,
-            scheme=scheme,
-            n_allow_assignment_change=None, # Allow as many changes as possible
-            random_state=3
-        )
-    else:
-        raise ValueError("Please ensure algo is either greedy or opt.")
-    
-    # Assign clusters
-    tsc.fit(arr, label_dict=label_dict)
-
-    # Add cluster assignments to network table
-    cluster_assignments_table = tsc.get_named_labels(label_dict=label_dict)
-    years = label_dict['T']
-    for year in years:
-        network_table[f'cluster_assignment_{year}'] = list(cluster_assignments_table[year])
-
-    # Add cluster assignments to graph nodes
-    nodes_list = list(G.nodes(data=True))
-    for node in nodes_list:
-            year = node[0][:4]
-            cluster = network_table.loc[network_table[f'geouid_{year}'] == node[0]]
-            if len(cluster) != 0:
-                cluster = int(cluster.iloc[0][f'cluster_assignment_{year}'])
-                dict = tsc.get_named_cluster_centers(label_dict=label_dict)[cluster].loc[year]
-                # figure out which cluster to assign a node to if it's already been assigned to a different cluster
-                if 'cluster_assignment' in node[1] and node[1]['cluster_assignment'] != cluster:
-                    old_dict = tsc.get_named_cluster_centers(label_dict=label_dict)[node[1]['cluster_assignment']].loc[year]
-                    # comparing distances between clusters
-                    old_cluster_distance = 0
-                    new_cluster_distance = 0
-                    for i in range(len(dict)):
-                        old_cluster_distance += (abs(int(node[1][label_dict['F'][i]]) - int(old_dict[i])))
-                        new_cluster_distance += (abs(int(node[1][label_dict['F'][i]]) - int(dict[i])))
-                    if old_cluster_distance < new_cluster_distance:
-                        cluster = node[1]['cluster_assignment']
-                node[1]['cluster_assignment'] = cluster
-            elif 'cluster_assignment' not in node[1]:
-                node[1]['cluster_assignment'] = np.nan
-    
-    return tsc
+    return core_cluster(
+        network_table=network_table, G=G, id=id, num_clusters=num_clusters, algo=algo, scheme=scheme, arr=arr, label_dict=label_dict)
 
 # Module 3: Visualization & Analysis
 
@@ -515,108 +290,8 @@ def plot_subnetwork(
         go.Figure: 
             The interactive subnetwork plot.
     """
-    # create valid list of years
-    all_years = sorted(list({int(year[0][:4]) for year in G.nodes(data=True)}))
-    if years is None:
-        years = all_years
-    else:
-        years = [year for year in years if int(year) in all_years]
-        if len(years) == 0:
-            years = all_years
-    all_years = [str(year) for year in all_years]
-    years = [str(year) for year in years]
-
-    # organize node names by year and network table path number
-    paths_for_each_year = [list(network_table[network_table.columns[i]]) for i in range(len(years))]
-
-    # prepare nodes to be graphed
-    sample_nodes = []
-    sample_nodes_iteration = []
-    # get nodes by id
-    if ids_to_show is not None:
-        for year in years:
-            for id in ids_to_show:
-                sample_nodes.append(f'{year}_{id}')
-    # get nodes by network table path
-    elif paths_to_show is not None:
-        for year in years:
-            year_index = all_years.index(year)
-            for i in paths_to_show:
-                sample_nodes.append(paths_for_each_year[year_index][i])
-    # get nodes by random sample
-    else:
-        year_nodes = [node for node in list(G.nodes(data=True)) if node[0][:4] == years[0]]
-        for _ in range(num_to_sample):
-            rand = random.randrange(len(year_nodes))
-            sample_nodes.append(year_nodes[rand][0])
-            sample_nodes_iteration.append(year_nodes[rand])
-        for node in list(G.nodes(data=True)):
-            if any([G.has_edge(node[0], sample_node[0]) for sample_node in sample_nodes_iteration]):
-                sample_nodes.append(node[0])
-                sample_nodes_iteration.append(node)
-
-    # create the graph
-    subgraph = G.subgraph(sample_nodes)
-    pos = nx.multipartite_layout(subgraph, subset_key='network_level')
-
-    edge_x = []
-    edge_y = []
-    for edge in subgraph.edges():
-        x0, y0 = pos[edge[0]]
-        x1, y1 = pos[edge[1]]
-        edge_x += [x0, x1, None]
-        edge_y += [y0, y1, None]
-
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
-        line=dict(width=1, color='gray'),
-        hoverinfo='none',
-        mode='lines'
-    )
-
-    # customize node information
-    node_x = []
-    node_y = []
-    text = []
-    title_text = []
-    for node in subgraph.nodes():
-        paths = ''
-        for year in years:
-            year_index = all_years.index(year)
-            for i in range(len(paths_for_each_year[year_index])):
-                if paths_for_each_year[year_index][i] == node:
-                    paths = paths + f'Path {i}, '
-        x, y = pos[node]
-        node_x.append(x)
-        node_y.append(y)
-        text.append(f'ID: {node}    Paths: {paths[:-2]}')
-        title_text.append(node)
-
-    node_trace = go.Scatter(
-        x=node_x, y=node_y,
-        mode='markers+text',
-        text=title_text,
-        textposition='top center',
-        hoverinfo='text',
-        hovertext=text,
-        marker=dict(
-            showscale=False,
-            color='orange',
-            size=10,
-            line=dict(width=2)
-        )
-    )
-
-    fig = go.Figure(data=[edge_trace, node_trace],
-                    layout=go.Layout(
-                        title='Subnetwork',
-                        showlegend=False,
-                        hovermode='closest',
-                        margin=dict(b=30,l=30,r=30,t=80),
-                        xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
-                        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False)
-                    ))
-    return fig
+    return visual_plot_subnetwork(
+        network_table=network_table, G=G, years=years, paths_to_show=paths_to_show, ids_to_show=ids_to_show, num_to_sample=num_to_sample)
 
 
 def plot_num_areas(
@@ -638,36 +313,7 @@ def plot_num_areas(
         go.Figure:
             The plot of the number of geographical areas.
     '''
-    id_label = network_table.columns[0][:-5]
-    if years is None:
-        year_cols = [col for col in network_table.columns.to_list() if id_label in col]
-        years = sorted(list({col[-4:] for col in year_cols}))
-
-    ct_per_year = []
-    num_years = len(years)
-    for i in range(num_years):
-        ids_list = list(network_table[network_table.columns[i]])
-        ct_per_year.append(len({id for id in ids_list}))
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=years,
-        y=ct_per_year,
-        mode='lines+markers',
-        line=dict(color='royalblue'),
-        marker=dict(size=8),
-        name=f'Number of {id_label}s'
-    ))
-
-    fig.update_layout(
-        title=f'Number of {id_label}s from {years[0]} to {years[num_years - 1]}',
-        xaxis_title='Year',
-        yaxis_title=f'Number of {id_label}s',
-        width=700,
-        height=500,
-    )
-
-    return fig
+    return visual_plot_num_areas(network_table=network_table, years=years)
 
 
 def plot_clusters_scatter(
@@ -750,136 +396,12 @@ def plot_clusters_scatter(
             a list of plotly.graph_objects.Figure (you cannot show the whole list; rather, iterate through 
             the list and show each figure)
     '''
-
-    # get necessary data from tsc
-    cluster_centres = tsc.cluster_centers_
-    labels = tsc.labels_
-
-    # prepare the variables we will use to iterate through features and cluster centres
-    F = arr.shape[2]
-    K = cluster_centres.shape[1] if cluster_centres is not None else np.unique(labels).size
-
-    # verify years exist in network table
-    if years is None:
-        years = label_dict['T']
-    for year in years:
-        column = f'cluster_assignment_{year}'
-        if column not in network_table.columns:
-            raise ValueError(f"Expected column '{column}' not found in DataFrame.")
-
-    # set default values and colours      
-    if paths_to_show is None:
-        paths_to_show = list(range(arr.shape[1])) 
-    if clusters_to_show is None:
-        clusters_to_show = list(range(K))
-    if cluster_labels is None:
-        cluster_labels = [str(i) for i in range(K)]
-
-    colors = []
-    if cluster_colours:
-        for i in range(K):
-            if i in cluster_colours:
-                colors.append(cluster_colours[i])
-            else:
-                colors.append(plotly.colors.qualitative.Plotly[i])
-    else:
-        colors = plotly.colors.qualitative.Plotly
-        if K > len(colors):
-            colors = list(islice(cycle(colors), K))
-
-    # make sure clusters_to_show and clusters_to_exclude only look at cluster assignments in years timeframe
-    new_network_table = network_table.copy(deep=True)
-    for year in label_dict['T']:
-        if year not in years:
-            new_network_table[f'cluster_assignment_{year}'] = [
-                np.nan for _ in range(len(network_table[f'cluster_assignment_{year}']))]
-
-    # filter entities using paths_to_show, clusters_to_show, clusters_to_exclude, dynamic_paths_only
-    paths_to_show = [
-        i for i in paths_to_show
-        if any(int(c) in clusters_to_show for c in new_network_table.iloc[i][-len(label_dict['T']):])
-        and all(int(c) not in clusters_to_exclude for c in new_network_table.iloc[i][-len(label_dict['T']):])
-    ]
-    if ids_to_show is not None:
-        paths_to_show = [
-        i for i in paths_to_show
-        if any(c in ids_to_show for c in [network_table.iloc[i][label_dict['T'].index(j)] for j in years])
-        ]
-    if dynamic_paths_only:
-        dynamic_entities = set(tsc.get_dynamic_entities()[0])
-        paths_to_show = [i for i in paths_to_show if i in dynamic_entities]
-
-    # create list of figures and iterate through features
-    figures = []
-    for f in range(F):
-        fig = go.Figure()
-        used_clusters = set()
-        used_paths = {}
-        # iterate through each path for the given feature
-        for i in paths_to_show:
-            x = years
-            y = arr[:, i, f]
-            
-            # Create hover data
-            path_ids = [network_table.iloc[i][label_dict['T'].index(j)] for j in years]
-            for id in path_ids:
-                if id not in used_paths:
-                    used_paths[id] = [i]
-                else:
-                    used_paths[id].append(i)
-            path_ids = [f'ID: {id}  Paths: {[path for path in used_paths[id]]}' for id in path_ids]
-
-            # plot lines indicating values
-            fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=y,
-                    mode='lines+markers',
-                    line=dict(color='black', dash='dot'),
-                    showlegend=False
-                )
-            )
-            # plot coloured dots indicating cluster
-            label_i = labels[i] if labels.ndim == 1 else labels[i, 0]
-            used_clusters.add(int(label_i))
-            fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=y,
-                    mode='markers',
-                    marker=dict(color=colors[int(label_i)], size=6),
-                    name=f"Path {i}",
-                    hoverinfo='text',
-                    hovertext=path_ids,
-                    showlegend=False
-                )
-            )
-        # plot cluster centres
-        for j in range(K):
-            if j in used_clusters:
-                mode = 'lines+markers'
-                fig.add_trace(
-                    go.Scatter(
-                        x=years,
-                        y=cluster_centres[:, j, f],
-                        mode=mode,
-                        line=dict(color=colors[j]),
-                        name=f"Cluster {cluster_labels[j]}"
-                    )
-                )
-                
-        # create layout and add figure to return list
-        fig.update_layout(
-            width=figsize[0],
-            height=figsize[1],
-            title=label_dict['F'][f],
-            xaxis_title="Year",
-            yaxis_title="Value",
-            legend_title="Legend",
-        )
-        figures.append(fig)
-
-    return figures
+    return visual_plot_clusters_scatter(
+        network_table=network_table, arr=arr, label_dict=label_dict, tsc=tsc, years=years,
+        cluster_colours=cluster_colours, dynamic_paths_only=dynamic_paths_only,
+        paths_to_show=paths_to_show, ids_to_show=ids_to_show, clusters_to_show=clusters_to_show,
+        clusters_to_exclude=clusters_to_exclude, figsize=figsize, cluster_labels=cluster_labels
+    )
 
 
 def plot_clusters_parallelcats(
@@ -929,73 +451,11 @@ def plot_clusters_parallelcats(
         plotly.graph_objects.Figure: 
             The interactive map
     """
-    # add default years and cluster labels
-    if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
-    if cluster_labels is None:
-        num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
-        cluster_labels = [str(i) for i in range(num_clusters)]
 
-    # create a list of valid columns across years
-    columns = []
-    for year in years:
-        column = f'cluster_assignment_{year}'
-        if column not in network_table.columns:
-            raise ValueError(f"Expected column '{column}' not found in DataFrame.")
-        else:
-            columns.append(column)
-    
-    # create a list of dimensions (labelled vertical bars)
-    dimensions = []
-    for col in columns:
-        values = network_table[col]
-        if cluster_labels:
-            value_map = {i: label for i, label in enumerate(cluster_labels)}
-            values = values.map(value_map)
-        dimensions.append(go.parcats.Dimension(
-            values=values,
-            categoryorder='category ascending',
-            label=col[-4:]
-        ))
-
-    # set colour_index_year, dimension that will determine colours, and colour values list
-    if colour_index_year is None or colour_index_year not in years:
-        colour_index_year = years[0]
-        
-    color_col = f"cluster_assignment_{colour_index_year}"
-    if color_col not in network_table.columns:
-        raise ValueError(f"Coloring year '{colour_index_year}' not found in the table.")
-    else:
-        color_values = network_table[color_col]
-    
-    num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
-    colors = []
-    if cluster_colours:
-        for i in range(num_clusters):
-            if i in cluster_colours:
-                colors.append(cluster_colours[i])
-            else:
-                colors.append(plotly.colors.qualitative.Plotly[i])
-    else:
-        colors = plotly.colors.qualitative.Plotly
-        if num_clusters > len(colors):
-            colors = list(islice(cycle(colors), num_clusters))
-    
-    colorscale = [[i / (len(cluster_labels) - 1), colors[i]] for i in range(len(cluster_labels))]
-
-    # make the figure
-    fig = go.Figure(data = [go.Parcats(dimensions=dimensions,
-        line={'color': color_values,
-        'colorscale': colorscale},
-        hoveron='category', hoverinfo='count+probability',
-        )])
-    fig.update_layout(
-        title="Parallel Categories Plot of Cluster Assignments Over Time",
-        width=figsize[0],
-        height=figsize[1],
+    return visual_plot_clusters_parallelcats(
+        network_table=network_table, years=years, cluster_colours=cluster_colours,
+        colour_index_year=colour_index_year, cluster_labels=cluster_labels, figsize=figsize
     )
-
-    return fig
 
 
 def plot_clusters_area(
@@ -1042,73 +502,10 @@ def plot_clusters_area(
         plotly.graph_objects.Figure: 
             The interactive map
     """
-
-    # auto-detect year columns if not provided
-    if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
-
-    # build count table: rows = years, columns = clusters
-    cluster_counts = pd.DataFrame()
-    for year in years:
-        col = f"cluster_assignment_{year}"
-        if col not in network_table.columns:
-            raise ValueError(f"Expected column '{col}' not found in DataFrame.")
-        counts = network_table[col].value_counts().sort_index()
-        cluster_counts[year] = counts
-    cluster_counts = cluster_counts.fillna(0).astype(int).T
-
-    num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
-    colors = []
-    if cluster_colours:
-        for i in range(num_clusters):
-            if i in cluster_colours:
-                colors.append(cluster_colours[i])
-            else:
-                colors.append(plotly.colors.qualitative.Plotly[i])
-    else:
-        colors = plotly.colors.qualitative.Plotly
-        if num_clusters > len(colors):
-            colors = list(islice(cycle(colors), num_clusters))
-
-    # create traces
-    fig = go.Figure()
-    x_vals = cluster_counts.index.tolist()
-    cumulative = pd.DataFrame(0, index=cluster_counts.index, columns=cluster_counts.columns)
-
-    for i, cluster in enumerate(cluster_counts.columns):
-        y_vals = cluster_counts[cluster]
-
-        if stacked:
-            y_base = cumulative.sum(axis=1)
-            fig.add_trace(go.Scatter(
-                x=x_vals,
-                y=y_base + y_vals,
-                mode='lines',
-                line=dict(color=colors[cluster]),
-                name=f'Cluster {cluster}' if cluster_labels is None else cluster_labels[i],
-                stackgroup='one',
-            ))
-            # cumulative[cluster] = y_vals
-        else:
-            fig.add_trace(go.Scatter(
-                x=x_vals,
-                y=y_vals,
-                mode='lines+markers',
-                line=dict(color=colors[cluster]),
-                name=f'Cluster {cluster}' if cluster_labels is None else cluster_labels[i]
-            ))
-
-    # final layout
-    fig.update_layout(
-        title="Area Plot of Cluster Assignments Over Time",
-        xaxis_title="Year",
-        yaxis_title="Number of Geographical Units",
-        width=figsize[0],
-        height=figsize[1],
-        legend_title="Clusters",
+    return visual_plot_clusters_area(
+        network_table=network_table, years=years, cluster_colours=cluster_colours,
+        cluster_labels=cluster_labels, figsize=figsize, stacked=stacked
     )
-
-    return fig
 
 
 def plot_clusters_map(
@@ -1164,83 +561,17 @@ def plot_clusters_map(
         plotly.express.choropleth: 
             The interactive choropleth map
     """
-    # Load and merge geodata if not provided
-    if gdf is None:
-        if geofile_path is None or network_table is None:
-            raise ValueError("You must provide either `gdf` or both `geofile_path` and `network_table`.")
-        gdf = join_geometries(geofile_path, network_table, year)
-
-    # Ensure column is valid
-    cluster_col = f"cluster_assignment_{year}"
-    if cluster_col not in gdf.columns:
-        raise ValueError(f"Column '{cluster_col}' not found in the GeoDataFrame.")
-
-    # Ensure data is categorical for consistent colouring
-    if cluster_labels:
-        cluster_labels = {i: cluster_labels[i] for i in range(len(cluster_labels))}
-        gdf["cluster_name"] = gdf[cluster_col].map(cluster_labels)
-        color_col = "cluster_name"
-    else:
-        gdf[cluster_col] = gdf[cluster_col].astype(str)
-        color_col = cluster_col
-
-    # create hover data
-    hover_data = {}
-    hover_data[f'{id}_{year}'] = True
-    if cluster_labels:
-        hover_data['cluster_name'] = False
-    if label_dict:
-        for feature in label_dict['F']:
-            hover_data[f'{feature}_{year}'] = True
-
-    # create colours
-    if network_table is not None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
-        num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
-    else:
-        years = [col[-4:] for col in gdf.columns if "cluster_assignment" in col]
-        num_clusters = max([max([int(element) for element in gdf[f'cluster_assignment_{year}']]) for year in years]) + 1
-    if cluster_colours:
-        for i in range(num_clusters):
-            if i not in cluster_colours:
-                cluster_colours[i] = plotly.colors.qualitative.Plotly[i]
-        if cluster_labels:
-            # map cluster_colours to labels
-            cluster_colours = {
-                cluster_labels[i]: cluster_colours[i] for i in cluster_colours if i < len(cluster_labels)
-            }
-        else:
-            # ensure string keys
-            cluster_colours = {str(k): v for k, v in cluster_colours.items()}
-    
-
-    # Convert geometry to GeoJSON
-    gdf = gdf.to_crs(epsg=4326)  # Ensure proper projection for web mapping
-    geojson = gdf.__geo_interface__
-
-    fig = px.choropleth(
-        gdf,
-        geojson=geojson,
-        locations=gdf.index,  # use index to map geometries
-        color=color_col,
-        hover_name=color_col,
-        hover_data=hover_data,
-        color_discrete_map=cluster_colours if cluster_colours else None,
-        title=f"Cluster Assignments in {year}"
+    return visual_plot_clusters_map(
+        year=year,
+        id=id,
+        cluster_colours=cluster_colours,
+        label_dict=label_dict,
+        cluster_labels=cluster_labels,
+        geofile_path=geofile_path,
+        network_table=network_table,
+        gdf=gdf,
+        figsize=figsize
     )
-
-    fig.update_geos( # if we don't do this it will show the whole world
-        fitbounds="locations",
-        visible=False
-    )
-
-    fig.update_layout(
-        width=figsize[0],
-        height=figsize[1],
-        legend_title_text="Cluster"
-    )
-
-    return fig
 
 
 def plot_line_means(
@@ -1292,77 +623,16 @@ def plot_line_means(
         plotly.graph_objects.Figure:
             The composed line‐chart with subplots.
     """
-    if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
-
-    cluster_feature_means = cluster_means_by_year(network_table, years, selected_features)
-    # 1) Pick a distinct color palette & map clusters → colors
-    clusters = list(cluster_feature_means.index)
-
-    num_clusters = len(years)
-    colors = []
-    if cluster_colours:
-        for i in range(num_clusters):
-            if i in cluster_colours:
-                colors.append(cluster_colours[i])
-            else:
-                colors.append(plotly.colors.qualitative.Plotly[i])
-    else:
-        colors = plotly.colors.qualitative.Plotly
-        if num_clusters > len(colors):
-            colors = list(islice(cycle(colors), num_clusters))
-
-    # 2) Make subplots
-    fig = make_subplots(
-        rows=1,
-        cols=len(selected_features),
-        shared_yaxes=False,
-        subplot_titles=[v.replace('_', ' ').title() for v in selected_features] 
-        if varnames is None else varnames,
-    )
-
-    # 3) Add one trace per cluster per subplot, forcing line+marker colors
-    for col_idx, var in enumerate(selected_features, start=1):
-        df_var = cluster_feature_means[var]
-        x_vals = df_var.columns.astype(int)
-
-        for i, cluster in enumerate(clusters):
-            fig.add_trace(
-                go.Scatter(
-                    x=x_vals,
-                    y=df_var.loc[cluster],
-                    mode='lines+markers',
-                    name=f'Cluster {cluster}' if cluster_labels is None else cluster_labels[i],
-                    line=dict(color=colors[cluster]),
-                    marker=dict(color=colors[cluster]),
-                    legendgroup=str(cluster),
-                    showlegend=(col_idx == 1)
-                ),
-                row=1,
-                col=col_idx
-            )
-
-        # update axes
-        fig.update_xaxes(
-            title_text=f"Mean {var.replace('_', ' ')}" if varnames is None else varnames[col_idx - 1],
-            tickmode="array",
-            tickvals=years,
-            ticktext=[str(y) for y in years],
-            row=1,
-            col=col_idx
-        )
-
-    # 4) Final layout
-    fig.update_layout(
+    return visual_plot_line_means(
+        network_table=network_table,
+        selected_features=selected_features,
+        years=years,
+        varnames=varnames,
+        cluster_colours=cluster_colours,
+        cluster_labels=cluster_labels,
         title=title,
-        width=figsize[0],
-        height=figsize[1],
-        legend_title_text="Cluster",
-        hovermode="x unified",
-        template="plotly_white",
-        margin=dict(t=80, b=40, l=60, r=20)
+        figsize=figsize
     )
-    return fig
 
 
 def plot_bar_means(
@@ -1413,90 +683,15 @@ def plot_bar_means(
         bars for clusters across the selected features
 
     """
-    if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
-
-    cluster_feature_means = cluster_means_by_year(network_table, years, selected_features)
-
-    # 1) determine grid
-    rows = math.ceil(len(years) / 2)
-
-    # 2) prepare color map for clusters
-    clusters = list(cluster_feature_means.index)
-
-    num_clusters = len(years)
-    colors = []
-    if cluster_colours:
-        for i in range(num_clusters):
-            if i in cluster_colours:
-                colors.append(cluster_colours[i])
-            else:
-                colors.append(plotly.colors.qualitative.Plotly[i])
-    else:
-        colors = plotly.colors.qualitative.Plotly
-        if num_clusters > len(colors):
-            colors = list(islice(cycle(colors), num_clusters))
-
-    # 3) build subplot figure
-    subplot_titles = [f"Means by Cluster in {year}" for year in years]
-    fig = make_subplots(
-        rows=rows,
-        cols=2,
-        subplot_titles=subplot_titles,
-        shared_yaxes=False,
-
+    return visual_plot_bar_means(
+        network_table=network_table,
+        selected_features=selected_features,
+        years=years,
+        varnames=varnames,
+        cluster_colours=cluster_colours,
+        cluster_labels=cluster_labels,
+        figsize=figsize
     )
-
-    # 4) grab the second level (years) of the MultiIndex
-    lvl1 = cluster_feature_means.columns.get_level_values(1)
-
-    # 5) for each year, slice and add a bar trace per cluster
-    for idx, year in enumerate(years):
-        # compute row/col
-        r = idx // 2 + 1
-        c = idx % 2 + 1
-
-        # build a boolean mask (int or str)
-        if year in lvl1:
-            mask = lvl1 == year
-        else:
-            str_lvl1 = [str(y) for y in lvl1]
-            if str(year) in str_lvl1:
-                mask = [s == str(year) for s in str_lvl1]
-            else:
-                raise KeyError(f"Year {year!r} not found in columns: {sorted(set(lvl1))}")
-
-        # slice out only this year's columns, rename them to selected_features
-        df_year = cluster_feature_means.loc[:, mask].copy()
-        df_year.columns = cluster_feature_means.columns.get_level_values(0)[mask]
-        df_year = df_year[selected_features]
-
-        # plot each cluster as a bar trace
-        for i, cluster in enumerate(clusters):
-            fig.add_trace(
-                go.Bar(
-                    x=[v.replace('_', ' ') for v in selected_features] if varnames is None else varnames,
-                    y=df_year.loc[cluster],
-                    name=f'Cluster {cluster}' if cluster_labels is None else cluster_labels[i],
-                    marker_color=colors[cluster],
-                    showlegend=(idx == 0)  # legend only on first subplot
-                ),
-                row=r,
-                col=c
-            )
-
-    # 6) final layout tweaks
-    fig.update_layout(
-        title="Cluster Means by Variable and Year",
-        width=figsize[0],
-        height=figsize[1],
-        bargap=0.2,
-        legend_title_text="Cluster",
-        template="plotly_white"
-    )
-    # tighten subplot margins
-    fig.update_layout(margin=dict(t=80, b=50, l=50, r=20))
-    return fig
 
 
 def radar_chart_multiple_years(
@@ -1544,72 +739,16 @@ def radar_chart_multiple_years(
         plotly.graph_objects.Figure:
             The resulting radar chart.
     """
-    if years is None:
-        years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
-
-    cluster_feature_means = cluster_means_by_year(network_table, years, selected_features)
-    # Get the year level of the MultiIndex
-    lvl1 = cluster_feature_means.columns.get_level_values(1)
-    fig = go.Figure()
-
-    num_clusters = len(years)
-    colors = []
-    if year_colours:
-        for i in range(num_clusters):
-            if i in year_colours:
-                colors.append(year_colours[i])
-            else:
-                colors.append(plotly.colors.qualitative.Plotly[i])
-    else:
-        colors = plotly.colors.qualitative.Plotly
-        if num_clusters > len(colors):
-            colors = list(islice(cycle(colors), num_clusters))
-
-    for idx, year in enumerate(years):
-        # build mask robustly
-        if year in lvl1:
-            mask = lvl1 == year
-        else:
-            str_lvl1 = [str(y) for y in lvl1]
-            if str(year) in str_lvl1:
-                mask = [s == str(year) for s in str_lvl1]
-            else:
-                raise KeyError(f"Year {year!r} not in columns: {sorted(set(lvl1))}")
-
-        # Slice out just this year's columns and rename to variable names
-        df_year = cluster_feature_means.loc[:, mask].copy()
-        df_year.columns = cluster_feature_means.columns.get_level_values(0)[mask]
-
-        # Reorder and pick only the requested variables
-        df_year = df_year[selected_features]
-
-        # Extract the row for the given cluster
-        result = df_year.iloc[selected_cluster]
-
-        # Add as a polar trace
-        fig.add_trace(go.Scatterpolar(
-            r=result.values,
-            theta=result.index if varnames is None else varnames,
-            fill='toself',
-            name=str(year),
-            line=dict(color=colors[idx]),
-            marker=dict(color=colors[idx]),
-        ))
-
-        fig.update_layout(
-            title=dict(
-                text=f"Cluster {selected_cluster} Yearly Profile" 
-                if cluster_label is None else f"{cluster_label} Yearly Profile",
-                x=0.5, xanchor="center"
-            ),
-            polar=dict(radialaxis=dict(visible=True)),
-            showlegend=True,
-            width=figsize[0],
-            height=figsize[1],
-            template="plotly_white",
-        )
-
-    return fig
+    return visual_radar_chart_multiple_years(
+        network_table=network_table,
+        selected_cluster=selected_cluster,
+        selected_features=selected_features,
+        years=years,
+        varnames=varnames,
+        year_colours=year_colours,
+        cluster_label=cluster_label,
+        figsize=figsize
+    )
 
 
 def radar_chart_multiple_clusters(
@@ -1654,70 +793,16 @@ def radar_chart_multiple_clusters(
         go.Figure:
             The Plotly figure containing one polar trace per cluster.
     """
-    cluster_feature_means = cluster_means_by_year(network_table, [selected_year], selected_features)
-    # Extract the year-level values
-    lvl1 = cluster_feature_means.columns.get_level_values(1)
-
-    years = [col[-4:] for col in network_table.columns if "cluster_assignment" in col]
-    num_clusters = max([max(network_table[f'cluster_assignment_{year}']) for year in years]) + 1
-    if clusters is None:
-        clusters = [i for i in range(num_clusters)]
-    colors = []
-    if cluster_colours:
-        for i in range(num_clusters):
-            if i in cluster_colours:
-                colors.append(cluster_colours[i])
-            else:
-                colors.append(plotly.colors.qualitative.Plotly[i])
-    else:
-        colors = plotly.colors.qualitative.Plotly
-        if num_clusters > len(colors):
-            colors = list(islice(cycle(colors), num_clusters))
-
-    # Build boolean mask for matching year
-    if selected_year in lvl1:
-        mask = lvl1 == selected_year
-    else:
-        str_lvl1 = list(map(str, lvl1))
-        if str(selected_year) in str_lvl1:
-            mask = [s == str(selected_year) for s in str_lvl1]
-        else:
-            raise KeyError(f"Year {selected_year!r} not found in columns: {sorted(set(lvl1))}")
-
-    # Slice out this year's columns and rename to variable names
-    df_year = cluster_feature_means.loc[:, mask].copy()
-    df_year.columns = cluster_feature_means.columns.get_level_values(0)[mask]
-
-    # Create the figure
-    fig = go.Figure()
-
-    # Add one trace per cluster
-    for i, cluster_label in enumerate(df_year.index):
-        if cluster_label in clusters:
-            vals = df_year.loc[cluster_label, selected_features]
-            fig.add_trace(go.Scatterpolar(
-                r=vals.values,
-                theta=selected_features if varnames is None else varnames,
-                line=dict(color=colors[i]),
-                marker=dict(color=colors[i]),
-                fill='toself',
-                name=f'Cluster {cluster_label}' if cluster_labels is None else cluster_labels[i]
-            ))
-
-    # Final layout tweaks
-    fig.update_layout(
-        title=dict(
-            text=f"Cluster Profiles for {selected_year}",
-            x=0.5, xanchor="center", yanchor="top"
-        ),
-        polar=dict(radialaxis=dict(visible=True)),
-        showlegend=True,
-        width=figsize[0],
-        height=figsize[1],
-        template="plotly_white",
+    return visual_radar_chart_multiple_clusters(
+        network_table=network_table,
+        selected_year=selected_year,
+        selected_features=selected_features,
+        clusters=clusters,
+        varnames=varnames,
+        cluster_colours=cluster_colours,
+        cluster_labels=cluster_labels,
+        figsize=figsize
     )
-
-    return fig
 
 
 def prob_reasoning_networks(
@@ -1780,23 +865,14 @@ def prob_reasoning_networks(
 
     TODO: Finish handling mismatches by modifying network tables
     '''
-    if set(independent_vars_1).union(set(independent_vars_2)) != set(independent_vars_1):
-        raise ValueError("Please make sure independent_vars_2 contains only variables that are also in independent_vars_1.")
-    all_vars_1 = independent_vars_1 + dependent_vars_1
-    all_vars_2 = independent_vars_2 + dependent_vars_2
-    pdf_1 = PDataFrame(independent_vars = independent_vars_1, data = network_table_1[all_vars_1])
-    pdf_2 = PDataFrame(independent_vars = independent_vars_2, data = network_table_2[all_vars_2])
-    # modify network tables according to mismatches if necessary
-    joined_pdf = pdf_1.pjoin(pdf_2, mismatches=mismatches)
-    if mismatches is not None and modify_tables:
-        if any(mismatch not in network_table_1.columns or mismatch not in network_table_2.columns for mismatch in mismatches.keys()):
-            raise ValueError("Please make sure mismatch keys correspond to columns in network tables.")
-        for var in mismatches.keys():
-            cpd = joined_pdf.bayes_net.get_cpds(var)
-            # handle mismatches here!!
-            # if cpd is not None:
-                # fixed_states = cpd.state_names[cpd.variable]
-    return joined_pdf
+    return core_prob_reasoning_networks(netwrok_table_1=network_table_1,
+                                        network_table_2=network_table_2,
+                                        independent_vars_1=independent_vars_1,
+                                        independent_vars_2=independent_vars_2,
+                                        dependent_vars_1=dependent_vars_1,
+                                        dependent_vars_2=dependent_vars_2,
+                                        mismatches=mismatches,
+                                        modify_tables=modify_tables)
 
 
 def prob_reasoning_years(
@@ -1891,6 +967,219 @@ def prob_reasoning_years(
     return joined_pdf
 
 
+# Tree Functions
+def preprocess_census_metadata(path, type_filter = "Total"):
+    """
+    Preprocess census metadata from a JSON file.
+    
+    Reads a JSON file containing census metadata, filters for specified type records targetting the type that represents the main skeleton of the tree,
+    and restructures the data for further processing.
+    
+    Args:
+        path (str): Path to the JSON file containing census metadata
+        type_filter (str): Type of records to filter for (default: "Total")
+        
+    Returns:
+        pd.DataFrame: Preprocessed DataFrame with columns ['vector', 'type', 'description', ...]
+                        where 'vector' contains the original index values
+    """
+        
+    return TreeMaker.tree_preprocess_census_metadata(path=path, type_filter=type_filter)
+
+def match_descriptions_jaccard(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9):
+    """
+    Match descriptions between two DataFrames using Jaccard similarity.
+    
+    This function performs a two-pass matching approach:
+    1. First pass: Exact description matches
+    2. Second pass: Jaccard similarity matches for unmatched descriptions
+    
+    Args:
+        source_df (pd.DataFrame): Source DataFrame with columns ['vector', 'description']
+        compare_df (pd.DataFrame): Comparison DataFrame with columns ['vector', 'description']
+        similarity_threshold (float): Minimum similarity score for matching (default: 0.9)
+        
+    Returns:
+        pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
+                     containing the mapping between source and comparison vectors
+    """
+    return TreeMaker.tree_match_descriptions_jaccard(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold)
+
+def match_descriptions_transformer(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
+    """
+    Match descriptions between two DataFrames using sentence transformers.
+    
+    This function uses pre-trained sentence transformers to compute semantic similarity
+    between census descriptions. 
+    
+    Performs a two-pass matching approach:
+    1. First pass: Exact description matches
+    2. Second pass: Sentence transformer similarity matches for unmatched descriptions
+    
+    Args:
+        source_df (pd.DataFrame): Source DataFrame with columns ['vector', 'description']
+        compare_df (pd.DataFrame): Comparison DataFrame with columns ['vector', 'description']
+        similarity_threshold (float): Minimum similarity score for matching (default: 0.9)
+        model_name (str): Name of the sentence transformer model to use (default: 'all-mpnet-base-v2')
+        
+    Returns:
+        pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
+                     containing the mapping between source and comparison vectors
+    """
+    return TreeMaker.tree_match_descriptions_transformer(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold, model_name=model_name)
+
+def match_descriptions_details_sentence_transformer( source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
+    """
+    Match descriptions using sentence transformers with optimized pre-encoding.
+    
+    Optimized version of match_descriptions_transformer that pre-encodes all descriptions
+    at once for better performance. Performs exact matching on 'description' column first,
+    then uses the 'details' column to find the best match when multiple exact matches exist.
+    
+    Args:
+        source_df (pd.DataFrame): Source DataFrame with columns ['vector', 'description', 'details']
+        compare_df (pd.DataFrame): Comparison DataFrame with columns ['vector', 'description', 'details']
+        similarity_threshold (float): Minimum similarity score for matching (default: 0.9)
+        model_name (str): Name of the sentence transformer model to use (default: 'all-mpnet-base-v2')
+        
+    Returns:
+        pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
+                     containing the mapping between source and comparison vectors
+    """
+    return TreeMaker.tree_match_descriptions_details_sentence_transformer(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold, model_name=model_name)
+
+def match_descriptions_multithreaded(
+    source_df: pd.DataFrame,
+    compare_df: pd.DataFrame,
+    similarity_threshold: float = 0.9,
+    max_workers: int = 4
+) -> pd.DataFrame:
+    """
+    Multithreaded version of map_descriptions with enhanced similarity matching.
+    
+    Performs a two-pass matching approach with multithreaded similarity processing:
+    1. First pass: Exact description matches (single-threaded)
+    2. Second pass: Similarity matches for unmatched descriptions (multithreaded)
+    
+    Changes in behavior compared to single-threaded version:
+    1. Uses mutual exclusion to ensure thread-safe mapping
+    2. Processes similarity matching in parallel
+    
+    Args:
+        source_df (pd.DataFrame): Source DataFrame with columns ['vector', 'description']
+        compare_df (pd.DataFrame): Compare DataFrame with columns ['vector', 'description']
+        similarity_threshold (float): Minimum similarity threshold (default: 0.9)
+        max_workers (int): Maximum number of worker threads (default: 4)
+        
+    Returns:
+        pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
+                    containing the mapping between source and comparison vectors
+    """
+    return TreeMaker.tree_match_descriptions_multithreaded(
+        source_df=source_df,
+        compare_df=compare_df,
+        similarity_threshold=similarity_threshold,
+        max_workers=max_workers
+    )
+
+def merge_mappings(map_descriptions, *mappings_dfs):
+    """
+    Merge multiple mapping DataFrames into a single consolidated mapping.
+    
+    Takes a base DataFrame (typically 2021 data, or the latest year) and multiple mapping DataFrames,
+    then consolidates all matching vectors for each description into a single list.
+    
+    Args:
+        map_descriptions (pd.DataFrame): Base DataFrame with columns ['description', 'vector']
+        *mappings_dfs: Variable number of mapping DataFrames with columns 
+                      ['description', 'vector_base', 'vector_cmp']
+        
+    Returns:
+        pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp_list']
+                     where vector_cmp_list contains all matching vectors from all mappings
+    """
+    return TreeMaker.tree_merge_mappings(map_descriptions=map_descriptions, *mappings_dfs)
+
+def build_tree(source_data, merged_df, tree_name, path = None):
+    """
+    
+    Creates a hierarchical tree visualization using Graphviz, where nodes
+    are colored based on how many census years they appear in. The tree structure is
+    determined by parent-child relationships in the source_data.
+    
+    Color coding:
+    - Gray: Source year only (no matches in other years)
+    - Salmon: Matches in 1 other year
+    - Yellow: Matches in 2 other years  
+    - Light green: Matches in 3+ other years
+    
+    Args:
+        source_data (pd.DataFrame): DataFrame with parent-child relationships
+                                  containing columns ['parent_vector', 'vector']
+        merged_df (pd.DataFrame): DataFrame from merge_mappings with columns
+                                ['description', 'vector_base', 'vector_cmp_list']
+        tree_name (str): Name for the output tree file (without extension)
+        path (str, optional): Directory path for saving the tree file (default: current directory)
+        
+    Returns:
+        Digraph: Graphviz Digraph object representing the tree visualization
+    """
+    return TreeMaker.tree_build_tree(source_data=source_data, merged_df=merged_df, tree_name=tree_name, path=path)
+
+def parse_tree_to_dict(filepath):
+    """
+    Parse a Graphviz tree file into a dictionary.
+    
+    This function reads a Graphviz tree file and extracts node information including
+    descriptions and year-specific vector mappings. It parses the node labels which
+    contain multi-line information about each node.
+    
+    Args:
+        filepath (str): Path to the Graphviz tree file
+        
+    Returns:
+        Dict: Dictionary mapping node IDs to their information
+    """
+    return TreeMaker.tree_parse_tree_to_dict(filepath=filepath)
+
+def extract_parent_child_relationships(filepath: str) -> Dict[str, List[str]]:
+    """
+    Extract parent-child relationships from tree file edges.
+    
+    This function reads a Graphviz tree file and extracts all parent-child relationships
+    defined by edges (lines containing " -> "). It creates a mapping where each parent
+    node is associated with a list of its child nodes.
+    
+    Args:
+        filepath (str): Path to the tree file (Graphviz format)
+        
+    Returns:
+        Dict[str, List[str]]: Dictionary mapping parent nodes to their children
+    """
+    return TreeMaker.tree_extract_parent_child_relationships(filepath=filepath)
+
+def predict_parent_nodes(tree_dict: Dict, parent_child_relationships: Dict[str, List[str]], 
+                        target_years: List[str]) -> Dict[str, List[str]]:
+    """
+    Predict parent nodes in other years using the additive property.
+    
+    This function implements the core prediction algorithm. It identifies parent nodes
+    that exist in some years but not others, and determines if they can be predicted
+    in missing years by checking if all their children exist in those years.
+    
+    The additive property means: Parent_Value = Sum(Child_Values)
+    If all children exist in a target year, we can predict the parent for that year.
+    
+    Args:
+        tree_dict (Dict): Parsed tree dictionary with node info and year mappings
+        parent_child_relationships (Dict[str, List[str]]): Parent to children mapping
+        target_years (List[str]): Years to predict parents for (default: ['2016', '2011', '2006'])
+        
+    Returns:
+        Dict[str, List[str]]: Dictionary mapping parent nodes to years they can be predicted in
+    """
+    return TreeMaker.tree_predict_parent_nodes(tree_dict=tree_dict, parent_child_relationships=parent_child_relationships, target_years=target_years)
+
 # Helpers
 
 def process_year_pair(df1, df2, year1, year2, id='GeoUID', threshold=0.05):
@@ -1900,36 +1189,7 @@ def process_year_pair(df1, df2, year1, year2, id='GeoUID', threshold=0.05):
     Applies spatial join and intersection, computes overlap area and percentage,
     and filters by a minimum threshold of shared area.
     """
-    area1_col = f'area_{year1}'
-    area2_col = f'area_{year2}'
-
-    df1 = df1[[id, area1_col, 'geometry']].rename(columns={id: f'{id}_1'})
-    df2 = df2[[id, area2_col, 'geometry']].rename(columns={id: f'{id}_2'})
-
-    df1 = gpd.GeoDataFrame(df1, geometry='geometry', crs='EPSG:3347')
-    df2 = gpd.GeoDataFrame(df2, geometry='geometry', crs='EPSG:3347')
-
-    # Spatial join (geometry from df1 is preserved)
-    joined = gpd.sjoin(df1, df2, predicate='intersects', how='inner')
-
-    # Merge to get the right-hand geometry back in
-    joined = joined.merge(df2[[f'{id}_2', area2_col, 'geometry']], on=f'{id}_2', how='left', suffixes=('', '_2'))
-
-    # Vectorized intersection
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', category=UserWarning)
-        joined['geometry'] = shapely.intersection(joined['geometry'], joined['geometry_2'])
-
-    joined = gpd.GeoDataFrame(joined, geometry='geometry', crs='EPSG:3347')
-    joined['area_intersection'] = joined.geometry.area
-
-    pct_col = f'pct_{year2}_of_{year1}'
-    joined[pct_col] = joined['area_intersection'] / joined[[area1_col, area2_col]].min(axis=1)
-
-    joined = joined[joined[pct_col] >= threshold]
-
-    kept_cols = [f'{id}_1', f'{id}_2', area1_col, area2_col, 'geometry', 'area_intersection', pct_col]
-    return joined[kept_cols]
+    return core_process_year_pair(df1=df1, df2=df2, year1=year1, year2=year2, id=id, threshold=threshold)
 
 
 def process_year_pair_wrapped(args):
@@ -1947,23 +1207,7 @@ def ct_containment(preprocessed_dfs, years, id='GeoUID', threshold=0.05, verbose
     that intersect tracts from the following year, filtered by threshold.
     Parallelizes if total data size > 20,000 rows.
     '''
-    total_rows = sum(len(df) for df in preprocessed_dfs)
-    use_parallel = total_rows > 20_000
-    if verbose:
-        print(f"CT_CONTAINMENT: total rows = {total_rows} | parallel = {use_parallel}")
-
-    tasks = [
-        (preprocessed_dfs[i], preprocessed_dfs[i + 1], years[i], years[i + 1], id, threshold)
-        for i in range(len(years) - 1)
-    ]
-
-    if use_parallel:
-        with ProcessPoolExecutor() as executor:
-            results = list(executor.map(process_year_pair_wrapped, tasks))
-    else:
-        results = [process_year_pair(*args) for args in tasks]
-
-    return results
+    return core_ct_containment(preprocessed_dfs=preprocessed_dfs, years=years, id=id, threshold=threshold, verbose=verbose)
 
 
 def get_nodes(contained_tracts_df, id, threshold=0.05):
@@ -1971,23 +1215,7 @@ def get_nodes(contained_tracts_df, id, threshold=0.05):
   Returns a GeoDataFrame with the graph connections between two census tracts
   of different years. Each row corresponds to one edge in the final network.
   '''
-  nodes = gpd.GeoDataFrame()
-  id_cols = [f'{id}_1', f'{id}_2']
-
-  #Aggregating overlapped percentage area for all unique CTs
-  for i in range(len(contained_tracts_df)):
-      pct_col = contained_tracts_df[i].iloc[:, -1].name
-      year_pct = (contained_tracts_df[i]
-                  .groupby(id_cols)
-                  .agg({f'{pct_col}': 'sum'})
-                  .reset_index()
-                  )
-
-      #Selecting CTs with an overlapped area above user's threshold
-      connected_cts = year_pct[year_pct[pct_col] >= threshold][id_cols]
-      nodes = pd.concat([nodes, connected_cts], axis=0, ignore_index=True)
-
-  return nodes
+  return core_get_nodes(contained_tracts_df=contained_tracts_df, id=id, threshold=threshold)
 
 
 def assign_node_level(row, years, id):
@@ -1996,9 +1224,7 @@ def assign_node_level(row, years, id):
   network
   Example: All 2021 nodes are in level 3 in a graph with years 2011, 2016, 2021
   """
-  for i in range(len(years)):
-    if row[id].startswith(str(years[i])):
-      return i+1
+  return core_assign_node_level(row=row, years=years, id=id)
     
 
 def get_attributes(nodes, census_dfs, years, id):
@@ -2006,28 +1232,7 @@ def get_attributes(nodes, census_dfs, years, id):
   Returns all the attributes in the original data corresponding to the network
   nodes
   '''
-  #Condensing nodes into single column df
-  single_nodes = pd.concat([nodes[col] for col in nodes]).reset_index(drop=True)
-  single_nodes_df = pd.DataFrame({id: single_nodes})
-  attr = []
-
-  for i in range(len(census_dfs)):
-      #Adding year as a prefix for the merge
-      curr_df_id = census_dfs[i].loc[:, id]
-      curr_df_id = years[i] + '_' + curr_df_id
-
-      #Removing geometry column in attributes for the final table
-      year_attr = census_dfs[i].loc[:, (census_dfs[i].columns != 'geometry')].copy()
-      year_attr[id] = curr_df_id
-      year_attr = pd.merge(single_nodes_df, year_attr, on=id, how='right')
-
-      attr.append(year_attr)
-  all_attr = (pd.concat(attr)).drop_duplicates(subset=id)
-  all_attr = all_attr[all_attr[id].notna()]
-
-  #Assigning each node its level in the network (used for mainly drawing)
-  all_attr['network_level'] = all_attr.apply(lambda x: assign_node_level(x, years, id), axis=1)
-  return all_attr
+  return core_get_attributes(nodes=nodes, census_dfs=census_dfs, years=years, id=id)
 
 
 def find_all_paths(nodes_df, num_joins, id):
@@ -2036,20 +1241,8 @@ def find_all_paths(nodes_df, num_joins, id):
   Note: The resulting dataframe is not organized and does contain
         duplicate entries in both the rows and columns.
   '''
-  left_cols = [f'{id}_1_x', f'{id}_2_x']
-  right_cols = [f'{id}_1_y', f'{id}_1_x']
 
-  #Merging network nodes num_joins amount of times to ensure all paths are found
-  curr_join = nodes_df.merge(nodes_df, how='left', left_on=f'{id}_1', right_on=f'{id}_2')
-  curr_join = curr_join.sort_values(by=[f'{id}_1_y', f'{id}_2_y'], ignore_index=True)
-
-  if num_joins > 1:
-      for i in range(num_joins - 1):
-          curr_join = curr_join.merge(curr_join, how='left', left_on=left_cols, right_on=right_cols, suffixes=['x', 'y'])
-          #Accounting for the new column names after the merge
-          left_cols = [col_name + 'x' for col_name in left_cols]
-          right_cols = [col_name + 'x' for col_name in right_cols]
-  return (curr_join, left_cols, right_cols)
+  return core_find_all_paths(nodes_df=nodes_df, num_joins=num_joins, id=id)
 
 
 def find_full_paths(full_paths_df, final_cols):
@@ -2058,12 +1251,8 @@ def find_full_paths(full_paths_df, final_cols):
   Note: Define a full path as a path in the network where the starting node is
         from the first input year and the ending node is from the last input year.
   '''
-  full_paths = pd.DataFrame()
 
-  if (not full_paths_df.empty):
-      full_paths = full_paths_df.T.drop_duplicates().sort_values(by=0).T
-      full_paths.columns = final_cols
-  return full_paths
+  return core_find_full_paths(full_paths_df=full_paths_df, final_cols=final_cols)
 
 
 def first_year_partial_paths(all_partial_paths, years, final_cols):
@@ -2072,30 +1261,7 @@ def first_year_partial_paths(all_partial_paths, years, final_cols):
   Note: Define a partial path as a path in the network where the starting and
         ending nodes are of any year (i.e., not a full path).
   '''
-  num_years = len(years)
-  drop_cols = final_cols[1:]
-
-  #Selecting paths with the starting node as the first year
-  mask = all_partial_paths.iloc[:, 0].str.startswith(years[0] + '_')
-  first_year_partials = all_partial_paths[mask]
-
-  #Checking if df empty or not
-  if len(first_year_partials.index) != 0:
-    #Calculating which year contains the ending node
-    max_partial_year = max(all_partial_paths.T.stack().values)[:4]
-
-    #Appending NaN columns to the end for each year as they don't exist in data
-    if ((max_partial_year >= years[1]) & (max_partial_year != years[-1])):
-        for i in reversed(range((num_years - 1) - max_partial_year)):
-            last_col = len(first_year_partials.columns)
-            first_year_partials.insert(last_col, final_cols[-i], np.nan)
-        first_year_partials.columns = final_cols
-    first_year_partials = first_year_partials.T.drop_duplicates().dropna().T
-    first_year_partials.columns = final_cols
-    return first_year_partials
-  else:
-    empty_df = pd.DataFrame(columns = final_cols)
-    return empty_df
+  return core_first_year_partial_paths(all_partial_paths=all_partial_paths, years=years, final_cols=final_cols)
 
 
 def unique_partial_paths(all_partial_paths, years, left_cols, final_cols):
@@ -2104,45 +1270,8 @@ def unique_partial_paths(all_partial_paths, years, left_cols, final_cols):
     Note: Define a partial path as a path in the network where the starting and
         ending nodes are of any year (i.e., not a full path).
     '''
-    num_years = len(years)
-    unique_partials = pd.DataFrame()
 
-    for i in range(1, num_years):
-        curr_year = years[i] + '_'
-        prev_year = years[i - 1] + '_'
-
-        curr_year_mask = all_partial_paths.iloc[:, 0].str.startswith(curr_year)
-        prev_year_mask = all_partial_paths.iloc[:, 0].str.startswith(prev_year)
-
-        curr_year_partials = all_partial_paths[curr_year_mask]
-        prev_year_partials = all_partial_paths[prev_year_mask]
-
-        curr_year_mask = ~curr_year_partials[left_cols[0]].isin(prev_year_partials)
-        curr_year_unique = curr_year_partials[curr_year_mask]
-
-        curr_year_unique = curr_year_unique.dropna(axis=1).T.drop_duplicates().T
-
-        # Prepend NaN for missing earlier years
-        for k in range(i):
-            curr_year_unique.insert(0, final_cols[k], np.nan)
-
-        # Fix width: pad to match final_cols if needed
-        if not curr_year_unique.empty:
-            current_cols = curr_year_unique.shape[1]
-            missing_cols = len(final_cols) - current_cols
-
-            for j in range(missing_cols):
-                curr_year_unique.insert(curr_year_unique.shape[1], f'_pad_{j}', np.nan)
-
-            # Trim if too long
-            curr_year_unique = curr_year_unique.iloc[:, :len(final_cols)]
-
-            # Assign correct column names
-            curr_year_unique.columns = final_cols
-
-        unique_partials = pd.concat([unique_partials, curr_year_unique], ignore_index=True)
-
-    return unique_partials
+    return core_unique_partial_paths(all_partial_paths=all_partial_paths, years=years, left_cols=left_cols, final_cols=final_cols)
 
 
 def find_partial_paths(partial_paths_df, years, left_cols, final_cols, exclude_nodes):
@@ -2152,14 +1281,11 @@ def find_partial_paths(partial_paths_df, years, left_cols, final_cols, exclude_n
         ending nodes are of any year (i.e., not a full path).
   '''
 
-  all_partial_paths = partial_paths_df.T.drop_duplicates().T
-  all_partial_paths = all_partial_paths[~all_partial_paths[left_cols[0]].isin(exclude_nodes)]
-
-  first_year_partials = first_year_partial_paths(all_partial_paths, years, final_cols)
-  unique_partials = unique_partial_paths(all_partial_paths, years, left_cols, final_cols)
-  all_partials = pd.concat([unique_partials, first_year_partials])
-
-  return all_partials
+  return core_find_partial_paths(partial_paths_df=partial_paths_df,
+                                 years=years,
+                                 left_cols=left_cols,
+                                 final_cols=final_cols,
+                                 exclude_nodes=exclude_nodes)
 
 
 def attach_attributes(network_table, attributes, years, final_cols, id):
@@ -2167,29 +1293,11 @@ def attach_attributes(network_table, attributes, years, final_cols, id):
   Return network table with attached attributes corresponding to the nodes
   involved.
   '''
-  years_df_list = []
-
-  for i in range(len(final_cols)):
-      col = str(final_cols[i])
-
-      #Getting attributes for each year
-      table_col = network_table[col].to_frame().astype(object)
-      curr_year = table_col.merge(attributes, how='left', left_on=col, right_on=id)
-      curr_year = curr_year.drop([id], axis=1)
-
-      #Suppressing warning for str.replace
-      with warnings.catch_warnings():
-          warnings.simplefilter(action='ignore', category=FutureWarning)
-          curr_year = curr_year.apply(lambda x: x.str.replace(r'[0-9]+_', '') if x.dtypes==object else x).reset_index(drop=True)
-
-          #Formatting all columns as 'colname_year'
-          curr_year_cols = [f'{col}_{years[i]}' if col != final_cols[i] and col != f'area_{years[i]}' else col for col in curr_year.columns]
-          curr_year.columns = curr_year_cols
-          years_df_list.append(curr_year)
-
-  #Combining all years dfs into one
-  network_table = (pd.concat(years_df_list, axis=1)).dropna(how='all', axis=1)
-  return network_table
+  return core_attach_attributes(network_table=network_table, 
+                                 attributes=attributes, 
+                                 years=years, 
+                                 final_cols=final_cols, 
+                                 id=id)
 
 
 def filter_columns(
@@ -2218,52 +1326,8 @@ def filter_columns(
             a tuple of the final filtered list of columns and the column labels that will
             be used for the label dictionary. Also returns the possibly modified network table.
     '''
-    # Only add features that are numerical or nan. the user should have selected accordingly
-    # but this is a sanity check
-    col_list = []
-
-    for col in cols:
-        if col in network_table.columns.to_list():
-            non_numerical_val_in_col = False
-            for entry in network_table[col]:
-                if isinstance(entry, str) and '_' in entry: # make sure underscores don't get converted to numbers
-                    non_numerical_val_in_col = True
-                    break
-                try:
-                    int(entry)  # see if it is either an int or an int masquerading as a string
-                except ValueError:
-                    try:
-                        float(entry)  # see if it is either a float or a float masquerading as a string
-                    except ValueError:
-                        if entry != 'NaN' and entry != 'nan': # see if it is nan
-                            non_numerical_val_in_col = True
-                            break
-                except OverflowError: # set infinity to nan
-                    index = network_table.loc[(network_table == entry).any(axis=1)].index[0]
-                    network_table[col][index] = np.nan                       
-            if not non_numerical_val_in_col:
-                col_list.append(col)
-
-    # Only add features for which there are variables in every year. Otherwise the shape of
-    # the 3D array used for tscluster will not make sense.
-    # note: we can improve on this with some version of the ppandas library (https://link.springer.com/article/10.1007/s10618-024-01054-7)
-    cols_in_every_year = []
-    features_list = [] # for the label dictionary
-    add_to_list = True
-    col_names_without_year = list(dict.fromkeys([col[:-4] for col in col_list])) # remove duplicates while preserving original order
-    for col in col_names_without_year:
-        add_to_list = True
-        for year in years:
-            if f"{col}{year}" not in col_list:
-                add_to_list = False
-                break
-        for year in years:
-            if add_to_list:
-                if col[:-1] not in features_list:
-                    features_list.append(col[:-1])
-                cols_in_every_year.append(f"{col}{year}")
-
-    return (cols_in_every_year, features_list, network_table)
+ 
+    return core_filter_columns(network_table=network_table, years=years, cols=cols)
 
 
 def join_geometries(
@@ -2308,26 +1372,11 @@ def join_geometries(
             data (e.g., cluster assignments) from the network table. Only valid, non-empty
             geometries are retained.
     """
-
-    # Validate input column name
-    geoid_col = f"{network_table_id_col}_{year}"
-    if geoid_col not in network_table.columns:
-        raise ValueError(f"Expected column '{geoid_col}' not found in network_table.")
-
-    # Read the GeoJSON file into a GeoDataFrame
-    gdf = gpd.read_file(geofile_path)
-
-    # Prepare a clean copy of the network table and standardize the ID format
-    network_table_copy = network_table.copy(deep=True)
-    network_table_copy[geoid_col] = network_table_copy[geoid_col].astype(str).str.replace(r'^\d{4}_', '', regex=True)
-
-    # Merge the GeoDataFrame with the network table using the geographic ID
-    merged_gdf = gdf.merge(network_table_copy, left_on=geofile_id_col, right_on=geoid_col)
-
-    # Remove empty or invalid geometries
-    merged_gdf = merged_gdf[~merged_gdf.is_empty & merged_gdf.geometry.notnull()]
-
-    return merged_gdf
+    return core_join_geometries(geofile_path=geofile_path,
+                                network_table=network_table,
+                                year=year,
+                                geofile_id_col=geofile_id_col,
+                                network_table_id_col=network_table_id_col)
 
 def cluster_means_by_year(
     network_table: pd.DataFrame,
@@ -2339,17 +1388,7 @@ def cluster_means_by_year(
     Compute mean values of base_cols per cluster for each year,
     and concatenate into a MultiIndex DataFrame (variable, year).
     """
-    dfs = {}
-    for year in years:
-        col_names = [f'{col}_{year}' for col in base_cols]
-        df_year = (
-            network_table
-            .groupby(f'{cluster_prefix}_{year}')[col_names]
-            .mean()
-            .rename(columns={f'{col}_{year}': col for col in base_cols})
-        )
-        dfs[year] = df_year
-
-    cluster_feature_means = pd.concat(dfs, axis=1)
-    cluster_feature_means = cluster_feature_means.swaplevel(0, 1, axis=1).sort_index(axis=1)
-    return cluster_feature_means
+    return core_cluster_means_by_year(network_table=network_table, 
+                                       years=years, 
+                                       base_cols=base_cols, 
+                                       cluster_prefix=cluster_prefix)
