@@ -1081,7 +1081,7 @@ def merge_mappings(map_descriptions, *mappings_dfs):
         pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp_list']
                      where vector_cmp_list contains all matching vectors from all mappings
     """
-    return TreeMaker.tree_merge_mappings(map_descriptions=map_descriptions, *mappings_dfs)
+    return TreeMaker.tree_merge_mappings(map_descriptions, *mappings_dfs)
 
 def build_tree(source_data, merged_df, tree_name, path = None):
     """
