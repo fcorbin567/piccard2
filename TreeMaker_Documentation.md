@@ -13,12 +13,12 @@
 
 ## Overview
 
-TreeMaker is Python framework designed for visualizing the linkes between census data across multiple years. It provides multiple approaches for matching census descriptions between different years and creates hierarchical tree visualizations that show the how these data are connected.
+TreeMaker is a Python framework designed for visualizing the links between census variables across multiple years. It provides multiple approaches for matching census variables between different years and creates hierarchical tree visualizations that show how these variables are connected.
 
 ### Key Features
-- **Multiple Matching Algorithms**: Jaccard similarity, and sentence transformers
-- **Hierarchical Visualization**: Creates tree structures showing parent-child relationships in census data
-- **Color-coded Results**: Visual indicators for data consistency across years
+- **Multiple Matching Algorithms**: Jaccard similarity and sentence transformers
+- **Hierarchical Visualization**: Creates tree structures showing the parent-child relationships in census data
+- **Colour-coded Results**: Visual indicators for data consistency across years
 
 ### Use Cases
 - Census data harmonization across multiple years
@@ -62,8 +62,8 @@ The framework performs two-pass matching:
 ### 3. Tree Visualization
 - **Nodes**: Represent census variables
 - **Edges**: Show parent-child relationships
-- **Colors**: Indicate consistency across years
-  - Gray: Source year only
+- **Colours**: Indicate consistency across years
+  - Grey: Source year only
   - Salmon: Matches in 1 other year
   - Yellow: Matches in 2 other years
   - Light green: Matches in 3+ other years
@@ -80,7 +80,7 @@ class TreeMaker:
     - Preprocessing census metadata from JSON files
     - Computing similarity between census descriptions using various methods
     - Matching descriptions across different census years
-    - Building hierarchical tree visualizations with color coding
+    - Building hierarchical tree visualizations with colour-coding
     """
 ```
 
@@ -136,7 +136,7 @@ Parses a Graphviz tree file into a dictionary structure.
 - `filepath` (str): Path to the Graphviz tree file
 
 **Returns:**
-- `Dict`: Dictionary mapping node IDs to their information including descriptions, year mappings, and colors
+- `Dict`: Dictionary mapping node IDs to their information including descriptions, year mappings, and colours
 
 **Example:**
 ```python
@@ -166,7 +166,7 @@ Predicts parent nodes in other years using the additive property.
 - `target_years` (List[str]): Years to predict parents for (default: ['2016', '2011', '2006'])
 
 **Returns:**
-- `Dict[str, List[str]]`: Dictionary mapping parent nodes to years they can be predicted in
+- `Dict[str, List[str]]`: Dictionary mapping parent nodes to years in which they can be predicted
 
 **Example:**
 ```python
@@ -208,7 +208,7 @@ Uses pre-trained sentence transformers for semantic similarity matching.
 - Captures semantic meaning
 - Better for paraphrased descriptions
 - Robust to word variations
-- Faster than Jaccard since it use vectorization
+- Faster than Jaccard since it uses vectorization
 
 **Disadvantages:**
 - Limited ability to process numeric values and ranges in text descriptions
@@ -376,7 +376,7 @@ The framework can parse existing Graphviz tree files to extract:
 - Node descriptions and metadata
 - Year-specific vector mappings
 - Parent-child relationships
-- Color coding information
+- Colour-coding information
 
 ### Workflow for Tree Analysis
 
@@ -436,7 +436,7 @@ for parent, years in predictions.items():
 The prediction algorithm works as follows:
 
 
-1. **Year Analysis**: Identifies which years the parent currently exists in
+1. **Year Analysis**: Identifies the years in which the parent currently exists
 2. **Child Verification**: For each target year, checks if ALL children exist
 3. **Prediction**: If all children exist in a target year, the parent can be predicted
 
