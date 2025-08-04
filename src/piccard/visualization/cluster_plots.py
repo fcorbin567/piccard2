@@ -1,15 +1,12 @@
 import numpy as np
 import pandas as pd
-from typing import Optional, List, Any, Tuple, Union
+from typing import Optional, List, Any, Tuple
 from itertools import cycle, islice
-from tscluster.greedytscluster import GreedyTSCluster
-from tscluster.opttscluster import OptTSCluster
 import plotly.graph_objects as go
 import plotly
 import plotly.express as px
 from plotly.subplots import make_subplots
 import math
-import geopandas as gpd
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -950,18 +947,18 @@ def visual_plot_clusters_map(
             colour map will be used for that cluster.
 
         label_dict(dict[str, Any] | None):
-            The label dictionary from pc.clustering_prep() that you used in pc.cluster() or a custom 
+            The label dictionary from pc.clustering_prep() that you used in pc.cluster() or a custom
             label dictionary. Used to determine what data will be shown when you hover over each geographical
             region. If None, only the index (path number) will be shown.
 
-        cluster_labels (List[str] | None): 
+        cluster_labels (List[str] | None):
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
         figsize (Tuple[float, float] | None):
             A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
 
     Returns:
-        plotly.express.choropleth: 
+        plotly.express.choropleth:
             The interactive choropleth map
     """
     # Load and merge geodata
@@ -981,15 +978,28 @@ def visual_plot_clusters_map(
         gdf[cluster_col] = gdf[cluster_col].astype(str)
         color_col = cluster_col
 
-    id = network_table.id
     # create hover data
     hover_data = {}
-    hover_data[f'{id}_{year}'] = True
+    # Add the ID column for the specific year
+    id_col = f'{network_table.id}_{year}'
+    if id_col.lower() in gdf.columns:
+        hover_data[id_col.lower()] = True
+    else:
+         print(f"Warning: ID column '{id_col}' not found in GeoDataFrame for year {year}")
+
+
     if cluster_labels:
         hover_data['cluster_name'] = False
+
     if label_dict:
         for feature in label_dict['F']:
-            hover_data[f'{feature}_{year}'] = True
+            col_name = f'{feature}_{year}'
+            if col_name in gdf.columns:
+                hover_data[col_name] = True
+            else:
+                # Handle cases where the column might not exist for a given year
+                print(f"Warning: Hover data column '{col_name}' not found in GeoDataFrame for year {year}")
+
 
     # create colours
     num_clusters = network_table.num_clusters
@@ -1006,7 +1016,7 @@ def visual_plot_clusters_map(
         else:
             # ensure string keys
             cluster_colours = {str(k): v for k, v in cluster_colours.items()}
-    
+
 
     # Convert geometry to GeoJSON
     gdf = gdf.to_crs(epsg=4326)  # Ensure proper projection for web mapping
