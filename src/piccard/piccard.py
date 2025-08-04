@@ -298,6 +298,7 @@ def plot_num_areas(
 
 def plot_clusters_scatter(
     network_table: ClusteredNetworkTable,
+    label_dict: Optional[dict[str, Any]] = None,
     years: Optional[List[str]] = None,
     cluster_colours: Optional[dict[int, str]] = None,
     dynamic_paths_only: Optional[bool] = True,
@@ -324,6 +325,9 @@ def plot_clusters_scatter(
     Parameters:
         network_table (ClusteredNetworkTable):
             The clustered network table.
+
+        label_dict (dict[str, Any] | None):
+            A custom label dictionary.
 
         years (List[str] | None): 
             The years displayed on the map. Default is all years in the network table.
@@ -364,7 +368,7 @@ def plot_clusters_scatter(
             the list and show each figure)
     '''
     return visual_plot_clusters_scatter(
-        network_table=network_table, years=years,
+        network_table=network_table, label_dict=label_dict, years=years,
         cluster_colours=cluster_colours, dynamic_paths_only=dynamic_paths_only,
         paths_to_show=paths_to_show, ids_to_show=ids_to_show, clusters_to_show=clusters_to_show,
         clusters_to_exclude=clusters_to_exclude, figsize=figsize, cluster_labels=cluster_labels

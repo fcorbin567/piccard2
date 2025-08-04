@@ -17,7 +17,7 @@ pip install piccard
 ## Importing the package
 
 ```
-from piccard import piccard as pc 
+import piccard as pc 
 ```
 
 ## Useful Functions
@@ -35,9 +35,7 @@ from piccard import piccard as pc
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Draws a subgraph of the network representation where *num_cts* is the number of census tracts in the first census year which are followed through all census years.  
 
 **piccard.plot_num_cts(network_table, years, id)**  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Plots the number of census tracts across all given census years.
-
-**Note**: Further explanation of the parameters and example code for all the above functions can be found in the [documentation](https://htmlpreview.github.io/?https://github.com/lodi-m/piccard/blob/main/docs/documentation.html).  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Plots the number of census tracts across all given census years. 
 
 ## Dependencies
 [GeoPandas - Allows spatial operations in Python, making it easier to work with geospatial data](https://geopandas.org/en/stable/)  
@@ -47,4 +45,4 @@ from piccard import piccard as pc
 [pandas - Offers data structures and operations for manipulating numerical tables](https://pandas.pydata.org/)  
 
 ## Authors 
-Maliha Lodi, Fernando Calderon Figueroa, Daniel Silver 
+Abdulmohseen AlAli, Elise Corbin, Maliha Lodi, Fernando Calderon Figueroa, Daniel Silver 

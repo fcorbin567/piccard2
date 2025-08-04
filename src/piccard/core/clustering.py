@@ -35,6 +35,15 @@ class ClusteredNetworkTable(NetworkTable):
         self.arr = arr
         self.label_dict = label_dict
 
+    def modify_label_dict(
+        self,
+        new_label_dict: dict[str, Any]
+    ):
+        '''
+        Modifies the label dictionary.
+        '''
+        self.label_dict = new_label_dict
+
 def core_clustering_prep(
     network_table: NetworkTable,
     cols: Optional[list[str]]=[]

@@ -18,6 +18,7 @@ from core.network import core_join_geometries
 
 def visual_plot_clusters_scatter(
     network_table: ClusteredNetworkTable,
+    label_dict: Optional[dict[str, Any]] = None,
     years: Optional[List[str]] = None,
     cluster_colours: Optional[dict[int, str]] = None,
     dynamic_paths_only: Optional[bool] = True,
@@ -44,6 +45,9 @@ def visual_plot_clusters_scatter(
     Parameters:
         network_table (ClusteredNetworkTable):
             The clustered network table.
+
+        label_dict (dict[str, Any] | None):
+            A custom label dictionary.
 
         years (List[str] | None): 
             The years displayed on the map. Default is all years in the network table.
@@ -86,6 +90,8 @@ def visual_plot_clusters_scatter(
     table = network_table.table
     tsc = network_table.tsc
     arr = network_table.arr
+    if label_dict is not None:
+        network_table.modify_label_dict(label_dict)
     label_dict = network_table.label_dict
 
     # get necessary data from tsc

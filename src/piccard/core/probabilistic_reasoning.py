@@ -1,3 +1,4 @@
+import pandas as pd
 from typing import Optional, List
 from p_frame import PDataFrame
 import sys
@@ -6,8 +7,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from core.network import NetworkTable
 
 def core_prob_reasoning_networks(
-    network_table_1: NetworkTable, 
-    network_table_2: NetworkTable, 
+    network_table_1: NetworkTable | pd.DataFrame, 
+    network_table_2: NetworkTable | pd.DataFrame, 
     independent_vars_1: List[str], 
     independent_vars_2: List[str], 
     dependent_vars_1: List[str], 
@@ -29,11 +30,11 @@ def core_prob_reasoning_networks(
     are okay.
 
     Parameters:
-        network_table_1 (NetworkTable): 
+        network_table_1 (NetworkTable | pd.DataFrame): 
             The reference network table. Typically the network table associated with the data assumed to
             be more unbiased and reliable.
 
-        network_table_2 (NetworkTable):
+        network_table_2 (NetworkTable | pd.DataFrame):
             The second network table whose independent and dependent variables will be joined into a probabilistic
             model of network_table_1.
         
@@ -65,8 +66,14 @@ def core_prob_reasoning_networks(
 
     TODO: Finish handling mismatches by modifying network tables
     '''
-    table_1 = network_table_1.table
-    table_2 = network_table_2.table
+    if type(network_table_1) == pd.DataFrame:
+        table_1 = network_table_1
+    else:
+        table_1 = network_table_1.table
+    if type(network_table_2) == pd.DataFrame:
+        table_2 = network_table_2
+    else:
+        table_2 = network_table_2.table
     if set(independent_vars_1).union(set(independent_vars_2)) != set(independent_vars_1):
         raise ValueError("Please make sure independent_vars_2 contains only variables that are also in independent_vars_1.")
     all_vars_1 = independent_vars_1 + dependent_vars_1
