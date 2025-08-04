@@ -421,9 +421,9 @@ def core_join_geometries(
             geometries are retained.
     """
     table = network_table.table
-    network_table_id_col = network_table.id.lower()
+    network_table_id_col = network_table.id
     # Validate input column name
-    geoid_col = f"{network_table_id_col}_{year}"
+    geoid_col = f"{network_table_id_col.lower()}_{year}"
     if geoid_col not in table.columns:
         raise ValueError(f"Expected column '{geoid_col}' not found in table.")
 
