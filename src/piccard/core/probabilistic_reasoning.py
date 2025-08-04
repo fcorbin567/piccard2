@@ -1,7 +1,9 @@
-import pandas as pd
-from network import NetworkTable
 from typing import Optional, List
 from p_frame import PDataFrame
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from core.network import NetworkTable
 
 def core_prob_reasoning_networks(
     network_table_1: NetworkTable, 

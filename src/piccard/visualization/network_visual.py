@@ -3,7 +3,6 @@ from typing import Optional, List
 import networkx as nx
 import plotly.graph_objects as go
 from core import probabilistic_reasoning as pc
-import pandas as pd
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

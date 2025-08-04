@@ -5,7 +5,10 @@ import networkx as nx
 from tscluster.opttscluster import OptTSCluster
 from tscluster.greedytscluster import GreedyTSCluster
 from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
-from network import NetworkTable
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from core.network import NetworkTable
 
 class ClusteredNetworkTable(NetworkTable):
     '''
