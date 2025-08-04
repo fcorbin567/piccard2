@@ -981,6 +981,7 @@ def visual_plot_clusters_map(
         gdf[cluster_col] = gdf[cluster_col].astype(str)
         color_col = cluster_col
 
+    id = network_table.id
     # create hover data
     hover_data = {}
     hover_data[f'{id}_{year}'] = True
