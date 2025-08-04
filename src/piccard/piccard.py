@@ -759,8 +759,8 @@ def radar_chart_multiple_clusters(
 
 
 def prob_reasoning_networks(
-    network_table_1: NetworkTable, 
-    network_table_2: NetworkTable, 
+    network_table_1: NetworkTable | pd.DataFrame | gpd.GeoDataFrame, 
+    network_table_2: NetworkTable | pd.DataFrame | gpd.GeoDataFrame, 
     independent_vars_1: List[str], 
     independent_vars_2: List[str], 
     dependent_vars_1: List[str], 
@@ -782,11 +782,11 @@ def prob_reasoning_networks(
     are okay.
 
     Parameters:
-        network_table_1 (NetworkTable): 
+        network_table_1 (NetworkTable | pd.DataFrame | gpd.GeoDataFrame): 
             The reference network table. Typically the network table associated with the data assumed to
             be more unbiased and reliable.
 
-        network_table_2 (NetworkTable):
+        network_table_2 (NetworkTable | pd.DataFrame | gpd.GeoDataFrame):
             The second network table whose independent and dependent variables will be joined into a probabilistic
             model of network_table_1.
         
