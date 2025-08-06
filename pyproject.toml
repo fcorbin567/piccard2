@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "piccard"
 version = "1.0.0"
 authors = [
-  { name="Abdulmohseen AlAli", email="aam20122003@gmail.com" },
+  { name="Abdulmohseen AlAli", email="abdulmohseen.alali@gmail.com" },
   { name="Elise Corbin", email="ecorbin567@gmail.com" },
   { name="Maliha Lodi", email="maliha.f.lodi@gmail.com" },
 ]
