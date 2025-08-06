@@ -51,31 +51,36 @@ Core Concepts
 -------------
 
 1. Census Metadata Structure
+
 VariableLinker works with census metadata JSON files that contain:
-- **Vector identifiers**: Unique codes for census variables
-- **Descriptions**: Human-readable descriptions of census variables
-- **Types**: Categories like "Total", "Male", "Female"
-- **Details**: Additional contextual information
+
+* **Vector identifiers**: Unique codes for census variables
+* **Descriptions**: Human-readable descriptions of census variables
+* **Types**: Categories like "Total", "Male", "Female"
+* **Details**: Additional contextual information
 
 2. Matching Process
+
 The framework performs two-pass matching:
-1. **Exact Match**: Find identical descriptions across years
-2. **Similarity Match**: Use similarity algorithms for inexact matches
+
+* **Exact Match**: Find identical descriptions across years
+* **Similarity Match**: Use similarity algorithms for inexact matches
 
 3. Tree Visualization
-- **Nodes**: Represent census variables
-- **Edges**: Show parent-child relationships
-- **Colours**: Indicate consistency across years
-  - Grey: Source year only
-  - Salmon: Matches in 1 other year
-  - Yellow: Matches in 2 other years
-  - Light green: Matches in 3+ other years
+
+* **Nodes**: Represent census variables
+* **Edges**: Show parent-child relationships
+* **Colours**: Indicate consistency across years
+  * Grey: Source year only
+  * Salmon: Matches in 1 other year
+  * Yellow: Matches in 2 other years
+  * Light green: Matches in 3+ other years
 
 
 VariableLinker Class Reference
 ------------------------------
 
-Class Overview
+**Class Overview**
 
 .. code-block:: python
 
@@ -90,22 +95,22 @@ Class Overview
       - Building hierarchical tree visualizations with colour-coding
       """
 
-Static Methods
+**Static Methods**
 
 ``preprocess_census_metadata(path, type_filter="Total")``
 
 Preprocesses census metadata from JSON files.
 
-**Parameters:**
+*Parameters:*
 
 - ``path`` (str): Path to the JSON file containing census metadata
 - ``type_filter`` (str): Type of records to filter for (default: "Total")
 
-**Returns:**
+*Returns:*
 
 - ``pd.DataFrame``: Preprocessed DataFrame with columns ['vector', 'type', 'description', ...]
 
-**Example:**
+*Example:*
 
 .. code-block:: python
 
@@ -117,12 +122,12 @@ Preprocesses census metadata from JSON files.
 
 Computes Jaccard similarity between two census descriptions.
 
-**Parameters:**
+*Parameters:*
 
 - ``sentence1`` (str): First census description
 - ``sentence2`` (str): Second census description
 
-**Returns:**
+*Returns:*
 
 - ``float``: Jaccard similarity score between 0.0 and 1.0
 
@@ -130,11 +135,11 @@ Computes Jaccard similarity between two census descriptions.
 
 Processes and tokenizes census text for similarity comparison.
 
-**Parameters:**
+*Parameters:*
 
 - ``text`` (str): Raw census description text
 
-**Returns:**
+*Returns:*
 
 - ``set``: Set of processed tokens (words and numbers, excluding stopwords)
 
@@ -142,59 +147,59 @@ Processes and tokenizes census text for similarity comparison.
 
 Normalizes numeric ranges in text for consistent processing.
 
-**Parameters:**
+*Parameters:*
 
 - ``text`` (str): Text containing potential numeric ranges
 
-**Returns:**
+*Returns:*
 
 - ``str``: Text with normalized numeric ranges
 
-##
 ``parse_tree_to_dict(filepath)``
 Parses a Graphviz tree file into a dictionary structure.
 
-**Parameters:**
+*Parameters:*
 - ``filepath`` (str): Path to the Graphviz tree file
 
-**Returns:**
+*Returns:*
 - ``Dict``: Dictionary mapping node IDs to their information including descriptions, year mappings, and colours
 
-**Example:**
+*Example:*
+
 .. code-block:: python
 
   tree_dict = VariableLinker.parse_tree_to_dict("my_tree")
 
 
-##
 ``extract_parent_child_relationships(filepath)``
 Extracts parent-child relationships from tree file edges.
 
-**Parameters:**
+*Parameters:*
 - ``filepath`` (str): Path to the tree file (Graphviz format)
 
-**Returns:**
+*Returns:*
 - ``Dict[str, List[str]]``: Dictionary mapping parent nodes to their children
 
-**Example:**
+*Example:*
+
 .. code-block:: python
 
   relationships = VariableLinker.extract_parent_child_relationships("my_tree")
 
 
-##
 ``predict_parent_nodes(tree_dict, parent_child_relationships, target_years)``
 Predicts parent nodes in other years using the additive property.
 
-**Parameters:**
+*Parameters:*
 - ``tree_dict`` (Dict): Parsed tree dictionary with node info and year mappings
 - ``parent_child_relationships`` (Dict[str, List[str]]): Parent to children mapping
 - ``target_years`` (List[str]): Years to predict parents for (default: ['2016', '2011', '2006'])
 
-**Returns:**
+*Returns:*
 - ``Dict[str, List[str]]``: Dictionary mapping parent nodes to years in which they can be predicted
 
-**Example:**
+*Example:*
+
 .. code-block:: python
 
     predictions = VariableLinker.predict_parent_nodes(tree_dict, relationships, ['2016', '2011'])
@@ -202,8 +207,8 @@ Predicts parent nodes in other years using the additive property.
 
 
 Matching Approaches
+--------------------
 
-#
 1. Jaccard Similarity Matching
 
 **Method:** ``match_descriptions_jaccard()``
@@ -211,14 +216,15 @@ Matching Approaches
 Uses token-based similarity to match descriptions across years.
 
 **Advantages:**
-- Good for exact and near-exact matches
-- Language-agnostic
+* Good for exact and near-exact matches
+* Language-agnostic
 
 **Disadvantages:**
-- May miss semantic similarities
-- Sensitive to phrasing
+* May miss semantic similarities
+* Sensitive to phrasing
 
 **Usage:**
+
 .. code-block:: python
 
     jaccard_mapping = VariableLinker.match_descriptions_jaccard(
@@ -228,7 +234,6 @@ Uses token-based similarity to match descriptions across years.
     )
 
 
-#
 2. Sentence Transformer Matching
 
 **Method:** ``match_descriptions_transformer()``
@@ -236,15 +241,16 @@ Uses token-based similarity to match descriptions across years.
 Uses pre-trained sentence transformers for semantic similarity matching.
 
 **Advantages:**
-- Captures semantic meaning
-- Better for paraphrased descriptions
-- Robust to word variations
-- Faster than Jaccard since it uses vectorization
+* Captures semantic meaning
+* Better for paraphrased descriptions
+* Robust to word variations
+* Faster than Jaccard since it uses vectorization
 
 **Disadvantages:**
-- Limited ability to process numeric values and ranges in text descriptions
+* Limited ability to process numeric values and ranges in text descriptions
 
 **Usage:**
+
 .. code-block:: python
 
     transformer_mapping = VariableLinker.match_descriptions_transformer(
@@ -255,7 +261,6 @@ Uses pre-trained sentence transformers for semantic similarity matching.
     )
 
 
-#
 3. Advanced Sentence Transformer Matching
 
 **Method:** ``match_descriptions_details_sentence_transformer()``
@@ -263,14 +268,15 @@ Uses pre-trained sentence transformers for semantic similarity matching.
 Enhanced version of sentence transformer that uses details for breaking ties when multiple exact matches are found.
 
 **Advantages:**
-- Attempts better disambiguation using details field
-- More sophisticated exact matching strategy
+* Attempts better disambiguation using details field
+* More sophisticated exact matching strategy
 
 **Disadvantages**
-- Performance evaluation indicates higher error rate than basic transformer
-- Higher computational complexity without performance benefit
+* Performance evaluation indicates higher error rate than basic transformer
+* Higher computational complexity without performance benefit
 
 **Usage:**
+
 .. code-block:: python
 
   advanced_mapping = VariableLinker.match_descriptions_details_sentence_transformer(
@@ -280,7 +286,6 @@ Enhanced version of sentence transformer that uses details for breaking ties whe
   )
 
 
-#
 4. Multithreaded Matching
 
 **Method:** ``match_descriptions_multithreaded()`` (from multithreaded_mapping.py)
@@ -288,11 +293,12 @@ Enhanced version of sentence transformer that uses details for breaking ties whe
 Jaccard similarity approach with multithreaded execution for enhanced performance on large datasets.
 
 **Advantages:**
-- Parallel processing for similarity matching phase
-- Configurable number of worker threads (default: 4)
-- Thread-safe operations for similarity matching
+* Parallel processing for similarity matching phase
+* Configurable number of worker threads (default: 4)
+* Thread-safe operations for similarity matching
 
 **Usage:**
+
 .. code-block:: python
 
   from multithreaded_mapping import match_descriptions_multithreaded
@@ -304,15 +310,12 @@ Jaccard similarity approach with multithreaded execution for enhanced performanc
       max_workers=8
   )
 
-
-
 Workflow Examples
+------------------
 
-#
-Basic Workflow
+**Basic Workflow**
 
 .. code-block:: python
-
 
   # 1. Load and preprocess data
   data_2021 = VariableLinker.preprocess_census_metadata("census_ca21_full_metadata.json")
@@ -335,8 +338,7 @@ Basic Workflow
   tree = VariableLinker.build_tree(data_2021, merged_df, "my_tree", "output_path")
 
 
-#
-Multi-Year Workflow
+**Multi-Year Workflow**
 
 .. code-block:: python
 
@@ -362,8 +364,7 @@ Multi-Year Workflow
   tree = VariableLinker.build_tree(data_2021, merged_df, "multi_year_tree", "trees/")
 
 
-#
-Comparison of Approaches
+**Comparison of Approaches**
 
 .. code-block:: python
 
@@ -389,10 +390,12 @@ Comparison of Approaches
 
 
 Advanced Features
+------------------
 
-#
-Custom Similarity Thresholds
+**Custom Similarity Thresholds**
+
 Different thresholds can be used for different types of data:
+
 .. code-block:: python
 
 
@@ -404,8 +407,9 @@ Different thresholds can be used for different types of data:
   exploratory_mapping = VariableLinker.match_descriptions_jaccard(data_2021, data_2016, 0.7)
 
 
-#
-Model Selection for Transformers
+
+**Model Selection for Transformers**
+
 .. code-block:: python
 
 
@@ -420,33 +424,31 @@ Model Selection for Transformers
 
 
 Tree Analysis and Prediction
+-----------------------------
 
-#
-Overview
+**Overview**
+
 VariableLinker provides advanced functionality for analyzing existing tree structures and predicting missing parent nodes based on the additive property of census data.
 
-#
-Key Concepts
+**Key Concepts**
 
-##
-Additive Property
-In census data, parent variables often represent the sum of their child variables:
+* Additive Property
 
-Parent_Value = Sum(Child_Values)
+  In census data, parent variables often represent the sum of their child variables:
 
+  Parent_Value = Sum(Child_Values)
 
-This property allows us to predict parent nodes in years where they don't exist or did not get matched, as long as all their children are available in those years.
+  This property allows us to predict parent nodes in years where they don't exist or did not get matched, as long as all their children are available in those years.
 
-##
-Tree Parsing
-The framework can parse existing Graphviz tree files to extract:
-- Node descriptions and metadata
-- Year-specific vector mappings
-- Parent-child relationships
-- Colour-coding information
+* Tree Parsing
 
-#
-Workflow for Tree Analysis
+  The framework can parse existing Graphviz tree files to extract:
+  * Node descriptions and metadata
+  * Year-specific vector mappings
+  * Parent-child relationships
+  * Colour-coding information
+
+**Workflow for Tree Analysis**
 
 .. code-block:: python
 
@@ -472,8 +474,7 @@ Workflow for Tree Analysis
       print(f"Parent '{parent_node}' can be predicted in years: {predictable_years}")
 
 
-#
-Complete Analysis Workflow
+**Complete Analysis Workflow**
 
 .. code-block:: python
 
@@ -511,15 +512,13 @@ Complete Analysis Workflow
       print(f"  Predictable in years: {years}")
 
 
-#
-Prediction Algorithm Details
+**Prediction Algorithm Details**
 
 The prediction algorithm works as follows:
 
-
-1. **Year Analysis**: Identifies the years in which the parent currently exists
-2. **Child Verification**: For each target year, checks if ALL children exist
-3. **Prediction**: If all children exist in a target year, the parent can be predicted
+* **Year Analysis**: Identifies the years in which the parent currently exists
+* **Child Verification**: For each target year, checks if ALL children exist
+* **Prediction**: If all children exist in a target year, the parent can be predicted
 
 **Example Scenario:**
 
@@ -531,30 +530,28 @@ but "Total Population" doesn't exist in 2016,
 then "Total Population" can be predicted for 2016.
 
 
-#
-Use Cases for Tree Analysis
+**Use Cases for Tree Analysis**
 
-- **Data Completeness Assessment**: Identify missing parent nodes across years
-- **Prediction Validation**: Verify which parent nodes can be reliably predicted
+* **Data Completeness Assessment**: Identify missing parent nodes across years
+* **Prediction Validation**: Verify which parent nodes can be reliably predicted
 
 
-Performance Considerations
+**Performance Considerations**
 
-#
-Memory Usage
-- Large datasets may require significant RAM
-- Consider processing in chunks for very large datasets
-- Use multithreaded approach for better memory management
+* Memory Usage
+  * Large datasets may require significant RAM
+  * Consider processing in chunks for very large datasets
+  * Use multithreaded approach for better memory management
 
 
 
 Troubleshooting
+----------------
 
-#
-Common Issues
+**Common Issues**
 
-##
 Import Errors
+
 .. code-block:: python
 
 
@@ -564,8 +561,8 @@ Import Errors
   from variable_linker import VariableLinker
 
 
-##
 File Not Found Errors
+
 .. code-block:: python
 
 
@@ -575,22 +572,21 @@ File Not Found Errors
   print("Files available:", os.listdir('.'))
 
 
-##
 Memory Issues
-- Reduce batch size for large datasets
-- Use multithreaded approach
-- Process data in chunks
 
-##
+* Reduce batch size for large datasets
+* Use multithreaded approach
+* Process data in chunks
+
 Poor Matching Results
-- Adjust similarity threshold
-- Try different matching approaches
-- Check data quality and consistency
+* Adjust similarity threshold
+* Try different matching approaches
+* Check data quality and consistency
 
-#
 VariableLinker Static Methods
 
 .. list-table:: VariableLinker Static Methods
+
    :header-rows: 1
 
    * - Method
@@ -647,11 +643,12 @@ VariableLinker Static Methods
      - ``Dict[str, List[str]]``
      - Predict missing parent nodes
 
-#
-Data Structures
 
-##
+Data Structures
+---------------
+
 Input DataFrame Format
+
 .. code-block:: python
 
   {
@@ -662,8 +659,8 @@ Input DataFrame Format
   }
 
 
-##
 Output Mapping Format
+
 .. code-block:: python
 
   {
@@ -673,8 +670,8 @@ Output Mapping Format
   }
 
 
-##
 Merged Mapping Format
+
 .. code-block:: python
 
   {
@@ -684,17 +681,15 @@ Merged Mapping Format
   }
 
 
-#
 Configuration Options
+---------------------
 
-##
 Similarity Thresholds
-- **Strict**: 0.95+ for critical variables
-- **Standard**: 0.9 for most use cases
-- **Relaxed**: 0.7-0.8 for exploratory analysis
+* **Strict**: 0.95+ for critical variables
+* **Standard**: 0.9 for most use cases
+* **Relaxed**: 0.7-0.8 for exploratory analysis
 
-##
 Transformer Models
-- ``'all-MiniLM-L6-v2'``: Fast, good accuracy
-- ``'all-mpnet-base-v2'``: Best accuracy, slower
-- Other Transformer Models can be found at [SBERT Pretrained Models](https://sbert.net/docs/sentence_transformer/pretrained_models.html)
+* ``'all-MiniLM-L6-v2'``: Fast, good accuracy
+* ``'all-mpnet-base-v2'``: Best accuracy, slower
+* Other Transformer Models can be found at [SBERT Pretrained Models](https://sbert.net/docs/sentence_transformer/pretrained_models.html)
