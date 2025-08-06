@@ -19,7 +19,7 @@ from .multithreaded_mapping import thread_match_descriptions_multithreaded
 nltk.download('stopwords')
 
 
-class TreeMaker:
+class VariableLinker:
     """
     A class for processing census metadata and creating tree visualizations.
     
@@ -68,8 +68,8 @@ class TreeMaker:
         Returns:
             float: Jaccard similarity score between 0.0 and 1.0
         """
-        tokens1 = TreeMaker.process_discription_text(sentence1)
-        tokens2 = TreeMaker.process_discription_text(sentence2)
+        tokens1 = VariableLinker.process_discription_text(sentence1)
+        tokens2 = VariableLinker.process_discription_text(sentence2)
         
         if not tokens1 and not tokens2:
             return 0.0
@@ -91,7 +91,7 @@ class TreeMaker:
         """
         stop_words = set(stopwords.words('english'))
         # Normalize ranges first
-        text = TreeMaker.normalize_ranges(text)
+        text = VariableLinker.normalize_ranges(text)
         
         # Extract tokens
         # Split on whitespace and punctuation, but preserve numbers and ranges
@@ -180,7 +180,7 @@ class TreeMaker:
             
             for compare_idx, compare_row in compare_data[~compare_data.index.isin(matched_indices)].iterrows():
                 compare_description = compare_row['description']
-                similarity_score = TreeMaker.jaccard_similarity(source_description, compare_description)
+                similarity_score = VariableLinker.jaccard_similarity(source_description, compare_description)
                 if similarity_score >= similarity_threshold and similarity_score > best_similarity:
                     best_similarity = similarity_score
                     best_match_idx = compare_idx

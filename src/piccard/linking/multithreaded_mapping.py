@@ -11,7 +11,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import TreeMaker to use its utility functions
+# Import VariableLinker to use its utility functions
 # Note: This import is moved to function level to avoid circular imports
 
 class ThreadSafeMappingManager:
@@ -93,13 +93,13 @@ def find_similarity_candidates(source_description: str,
         List of (similarity_score, compare_idx, compare_vector) sorted by score descending
     """
     # Import here to avoid circular import
-    from tree.tree_maker import TreeMaker
+    from linking.variable_linker import VariableLinker
     
     candidates = []
     
     for compare_idx, compare_row in compare_data.iterrows():
         compare_description = compare_row['description']
-        similarity_score = TreeMaker.jaccard_similarity(source_description, compare_description)
+        similarity_score = VariableLinker.jaccard_similarity(source_description, compare_description)
         
         if similarity_score >= similarity_threshold:
             candidates.append((similarity_score, compare_idx, compare_row['vector']))

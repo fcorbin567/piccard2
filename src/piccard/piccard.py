@@ -14,7 +14,7 @@ from core.network import *
 from core.probabilistic_reasoning import *
 from visualization.network_visual import *
 from visualization.cluster_plots import *
-from tree.tree_maker import TreeMaker
+from linking.variable_linker import VariableLinker
 
 # Module 1: Network Creation
 
@@ -900,7 +900,7 @@ def prob_reasoning_years(
         modify_tables=modify_tables)
 
 
-# Tree Functions
+# Variable Linker Functions
 
 def preprocess_census_metadata(path, type_filter = "Total"):
     """
@@ -918,7 +918,7 @@ def preprocess_census_metadata(path, type_filter = "Total"):
                         where 'vector' contains the original index values
     """
         
-    return TreeMaker.tree_preprocess_census_metadata(path=path, type_filter=type_filter)
+    return VariableLinker.tree_preprocess_census_metadata(path=path, type_filter=type_filter)
 
 
 def match_descriptions_jaccard(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9):
@@ -938,7 +938,7 @@ def match_descriptions_jaccard(source_df: pd.DataFrame, compare_df: pd.DataFrame
         pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
                      containing the mapping between source and comparison vectors
     """
-    return TreeMaker.tree_match_descriptions_jaccard(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold)
+    return VariableLinker.tree_match_descriptions_jaccard(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold)
 
 
 def match_descriptions_transformer(source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
@@ -962,7 +962,7 @@ def match_descriptions_transformer(source_df: pd.DataFrame, compare_df: pd.DataF
         pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
                      containing the mapping between source and comparison vectors
     """
-    return TreeMaker.tree_match_descriptions_transformer(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold, model_name=model_name)
+    return VariableLinker.tree_match_descriptions_transformer(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold, model_name=model_name)
 
 
 def match_descriptions_details_sentence_transformer( source_df: pd.DataFrame, compare_df: pd.DataFrame, similarity_threshold: float = 0.9, model_name: str = 'all-mpnet-base-v2'):
@@ -983,7 +983,7 @@ def match_descriptions_details_sentence_transformer( source_df: pd.DataFrame, co
         pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
                      containing the mapping between source and comparison vectors
     """
-    return TreeMaker.tree_match_descriptions_details_sentence_transformer(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold, model_name=model_name)
+    return VariableLinker.tree_match_descriptions_details_sentence_transformer(source_df=source_df, compare_df=compare_df, similarity_threshold=similarity_threshold, model_name=model_name)
 
 
 def match_descriptions_multithreaded(
@@ -1013,7 +1013,7 @@ def match_descriptions_multithreaded(
         pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp']
                     containing the mapping between source and comparison vectors
     """
-    return TreeMaker.tree_match_descriptions_multithreaded(
+    return VariableLinker.tree_match_descriptions_multithreaded(
         source_df=source_df,
         compare_df=compare_df,
         similarity_threshold=similarity_threshold,
@@ -1037,7 +1037,7 @@ def merge_mappings(map_descriptions, *mappings_dfs):
         pd.DataFrame: DataFrame with columns ['description', 'vector_base', 'vector_cmp_list']
                      where vector_cmp_list contains all matching vectors from all mappings
     """
-    return TreeMaker.tree_merge_mappings(map_descriptions, *mappings_dfs)
+    return VariableLinker.tree_merge_mappings(map_descriptions, *mappings_dfs)
 
 
 def build_tree(source_data, merged_df, tree_name, path = None):
@@ -1064,7 +1064,7 @@ def build_tree(source_data, merged_df, tree_name, path = None):
     Returns:
         Digraph: Graphviz Digraph object representing the tree visualization
     """
-    return TreeMaker.tree_build_tree(source_data=source_data, merged_df=merged_df, tree_name=tree_name, path=path)
+    return VariableLinker.tree_build_tree(source_data=source_data, merged_df=merged_df, tree_name=tree_name, path=path)
 
 
 def parse_tree_to_dict(filepath):
@@ -1081,7 +1081,7 @@ def parse_tree_to_dict(filepath):
     Returns:
         Dict: Dictionary mapping node IDs to their information
     """
-    return TreeMaker.tree_parse_tree_to_dict(filepath=filepath)
+    return VariableLinker.tree_parse_tree_to_dict(filepath=filepath)
 
 
 def extract_parent_child_relationships(filepath: str) -> Dict[str, List[str]]:
@@ -1098,7 +1098,7 @@ def extract_parent_child_relationships(filepath: str) -> Dict[str, List[str]]:
     Returns:
         Dict[str, List[str]]: Dictionary mapping parent nodes to their children
     """
-    return TreeMaker.tree_extract_parent_child_relationships(filepath=filepath)
+    return VariableLinker.tree_extract_parent_child_relationships(filepath=filepath)
 
 
 def predict_parent_nodes(tree_dict: Dict, parent_child_relationships: Dict[str, List[str]], 
@@ -1121,4 +1121,4 @@ def predict_parent_nodes(tree_dict: Dict, parent_child_relationships: Dict[str, 
     Returns:
         Dict[str, List[str]]: Dictionary mapping parent nodes to years they can be predicted in
     """
-    return TreeMaker.tree_predict_parent_nodes(tree_dict=tree_dict, parent_child_relationships=parent_child_relationships, target_years=target_years)
+    return VariableLinker.tree_predict_parent_nodes(tree_dict=tree_dict, parent_child_relationships=parent_child_relationships, target_years=target_years)

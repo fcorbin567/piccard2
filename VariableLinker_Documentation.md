@@ -1,10 +1,10 @@
-# TreeMaker: Census Data Harmonization and Visualization Framework
+# VariableLinker: Census Data Harmonization and Visualization Framework
 
 ## Table of Contents
 1. [Overview](#overview)
 2. [Installation and Setup](#installation-and-setup)
 3. [Core Concepts](#core-concepts)
-4. [TreeMaker Class Reference](#treemaker-class-reference)
+4. [VariableLinker Class Reference](#VariableLinker-class-reference)
 5. [Matching Approaches](#matching-approaches)
 6. [Workflow Examples](#workflow-examples)
 7. [Advanced Features](#advanced-features)
@@ -13,7 +13,7 @@
 
 ## Overview
 
-TreeMaker is a Python framework designed for visualizing the links between census variables across multiple years. It provides multiple approaches for matching census variables between different years and creates hierarchical tree visualizations that show how these variables are connected.
+VariableLinker is a Python framework designed for visualizing the links between census variables across multiple years. It provides multiple approaches for matching census variables between different years and creates hierarchical tree visualizations that show how these variables are connected.
 
 ### Key Features
 - **Multiple Matching Algorithms**: Jaccard similarity and sentence transformers
@@ -32,7 +32,7 @@ TreeMaker is a Python framework designed for visualizing the links between censu
 pip install -r requirements.txt
 ```
 
-### Import TreeMaker
+### Import VariableLinker
 ```python
 import sys
 import os
@@ -42,13 +42,13 @@ current_dir = os.getcwd()
 src_path = os.path.join(current_dir, '..', 'src', 'piccard')
 sys.path.append(src_path)
 
-from TreeMaker import TreeMaker
+from variable_linker import VariableLinker
 ```
 
 ## Core Concepts
 
 ### 1. Census Metadata Structure
-TreeMaker works with census metadata JSON files that contain:
+VariableLinker works with census metadata JSON files that contain:
 - **Vector identifiers**: Unique codes for census variables
 - **Descriptions**: Human-readable descriptions of census variables
 - **Types**: Categories like "Total", "Male", "Female"
@@ -68,11 +68,11 @@ The framework performs two-pass matching:
   - Yellow: Matches in 2 other years
   - Light green: Matches in 3+ other years
 
-## TreeMaker Class Reference
+## VariableLinker Class Reference
 
 ### Class Overview
 ```python
-class TreeMaker:
+class VariableLinker:
     """
     A class for processing census metadata and creating tree visualizations.
     
@@ -98,7 +98,7 @@ Preprocesses census metadata from JSON files.
 
 **Example:**
 ```python
-data_2021 = TreeMaker.preprocess_census_metadata("census_ca21_full_metadata.json")
+data_2021 = VariableLinker.preprocess_census_metadata("census_ca21_full_metadata.json")
 ```
 
 #### `jaccard_similarity(sentence1, sentence2)`
@@ -140,7 +140,7 @@ Parses a Graphviz tree file into a dictionary structure.
 
 **Example:**
 ```python
-tree_dict = TreeMaker.parse_tree_to_dict("my_tree")
+tree_dict = VariableLinker.parse_tree_to_dict("my_tree")
 ```
 
 #### `extract_parent_child_relationships(filepath)`
@@ -154,7 +154,7 @@ Extracts parent-child relationships from tree file edges.
 
 **Example:**
 ```python
-relationships = TreeMaker.extract_parent_child_relationships("my_tree")
+relationships = VariableLinker.extract_parent_child_relationships("my_tree")
 ```
 
 #### `predict_parent_nodes(tree_dict, parent_child_relationships, target_years)`
@@ -170,7 +170,7 @@ Predicts parent nodes in other years using the additive property.
 
 **Example:**
 ```python
-predictions = TreeMaker.predict_parent_nodes(tree_dict, relationships, ['2016', '2011'])
+predictions = VariableLinker.predict_parent_nodes(tree_dict, relationships, ['2016', '2011'])
 ```
 
 ## Matching Approaches
@@ -191,7 +191,7 @@ Uses token-based similarity to match descriptions across years.
 
 **Usage:**
 ```python
-jaccard_mapping = TreeMaker.match_descriptions_jaccard(
+jaccard_mapping = VariableLinker.match_descriptions_jaccard(
     source_df=data_2021, 
     compare_df=data_2016, 
     similarity_threshold=0.9
@@ -215,7 +215,7 @@ Uses pre-trained sentence transformers for semantic similarity matching.
 
 **Usage:**
 ```python
-transformer_mapping = TreeMaker.match_descriptions_transformer(
+transformer_mapping = VariableLinker.match_descriptions_transformer(
     source_df=data_2021,
     compare_df=data_2016,
     similarity_threshold=0.9,
@@ -239,7 +239,7 @@ Enhanced version of sentence transformer that uses details for breaking ties whe
 
 **Usage:**
 ```python
-advanced_mapping = TreeMaker.match_descriptions_details_sentence_transformer(
+advanced_mapping = VariableLinker.match_descriptions_details_sentence_transformer(
     source_df=data_2021,
     compare_df=data_2016,
     similarity_threshold=0.9
@@ -275,62 +275,62 @@ multithreaded_mapping = match_descriptions_multithreaded(
 
 ```python
 # 1. Load and preprocess data
-data_2021 = TreeMaker.preprocess_census_metadata("census_ca21_full_metadata.json")
-data_2016 = TreeMaker.preprocess_census_metadata("census_ca16_full_metadata.json")
+data_2021 = VariableLinker.preprocess_census_metadata("census_ca21_full_metadata.json")
+data_2016 = VariableLinker.preprocess_census_metadata("census_ca16_full_metadata.json")
 
 # 2. Perform matching
-mapping_21_16 = TreeMaker.match_descriptions_jaccard(
+mapping_21_16 = VariableLinker.match_descriptions_jaccard(
     source_df=data_2021, 
     compare_df=data_2016, 
     similarity_threshold=0.9
 )
 
 # 3. Merge mappings
-merged_df = TreeMaker.merge_mappings(data_2021, mapping_21_16)
+merged_df = VariableLinker.merge_mappings(data_2021, mapping_21_16)
 
 # 4. Build visualization
-tree = TreeMaker.build_tree(data_2021, merged_df, "my_tree", "output_path")
+tree = VariableLinker.build_tree(data_2021, merged_df, "my_tree", "output_path")
 ```
 
 ### Multi-Year Workflow
 
 ```python
 # Load data for multiple years
-data_2006 = TreeMaker.preprocess_census_metadata("census_ca06_full_metadata.json")
-data_2011 = TreeMaker.preprocess_census_metadata("census_ca11_full_metadata.json")
-data_2016 = TreeMaker.preprocess_census_metadata("census_ca16_full_metadata.json")
-data_2021 = TreeMaker.preprocess_census_metadata("census_ca21_full_metadata.json")
+data_2006 = VariableLinker.preprocess_census_metadata("census_ca06_full_metadata.json")
+data_2011 = VariableLinker.preprocess_census_metadata("census_ca11_full_metadata.json")
+data_2016 = VariableLinker.preprocess_census_metadata("census_ca16_full_metadata.json")
+data_2021 = VariableLinker.preprocess_census_metadata("census_ca21_full_metadata.json")
 
 # Match against 2021 (latest year)
-mapping_21_16 = TreeMaker.match_descriptions_jaccard(data_2021, data_2016, 0.9)
-mapping_21_11 = TreeMaker.match_descriptions_jaccard(data_2021, data_2011, 0.9)
-mapping_21_06 = TreeMaker.match_descriptions_jaccard(data_2021, data_2006, 0.9)
+mapping_21_16 = VariableLinker.match_descriptions_jaccard(data_2021, data_2016, 0.9)
+mapping_21_11 = VariableLinker.match_descriptions_jaccard(data_2021, data_2011, 0.9)
+mapping_21_06 = VariableLinker.match_descriptions_jaccard(data_2021, data_2006, 0.9)
 
 # Merge all mappings
-merged_df = TreeMaker.merge_mappings(data_2021, mapping_21_16, mapping_21_11, mapping_21_06)
+merged_df = VariableLinker.merge_mappings(data_2021, mapping_21_16, mapping_21_11, mapping_21_06)
 
 # Build comprehensive tree
-tree = TreeMaker.build_tree(data_2021, merged_df, "multi_year_tree", "trees/")
+tree = VariableLinker.build_tree(data_2021, merged_df, "multi_year_tree", "trees/")
 ```
 
 ### Comparison of Approaches
 
 ```python
 # Jaccard approach
-jaccard_mapping = TreeMaker.match_descriptions_jaccard(data_2021, data_2016, 0.9)
-jaccard_merged = TreeMaker.merge_mappings(data_2021, jaccard_mapping)
-jaccard_tree = TreeMaker.build_tree(data_2021, jaccard_merged, "jaccard_tree", "trees/")
+jaccard_mapping = VariableLinker.match_descriptions_jaccard(data_2021, data_2016, 0.9)
+jaccard_merged = VariableLinker.merge_mappings(data_2021, jaccard_mapping)
+jaccard_tree = VariableLinker.build_tree(data_2021, jaccard_merged, "jaccard_tree", "trees/")
 
 # Transformer approach
-transformer_mapping = TreeMaker.match_descriptions_transformer(data_2021, data_2016, 0.9)
-transformer_merged = TreeMaker.merge_mappings(data_2021, transformer_mapping)
-transformer_tree = TreeMaker.build_tree(data_2021, transformer_merged, "transformer_tree", "trees/")
+transformer_mapping = VariableLinker.match_descriptions_transformer(data_2021, data_2016, 0.9)
+transformer_merged = VariableLinker.merge_mappings(data_2021, transformer_mapping)
+transformer_tree = VariableLinker.build_tree(data_2021, transformer_merged, "transformer_tree", "trees/")
 
 # Multithreaded approach
 from multithreaded_mapping import match_descriptions_multithreaded
 multithreaded_mapping = match_descriptions_multithreaded(data_2021, data_2016, 0.9, 8)
-multithreaded_merged = TreeMaker.merge_mappings(data_2021, multithreaded_mapping)
-multithreaded_tree = TreeMaker.build_tree(data_2021, multithreaded_merged, "multithreaded_tree", "trees/")
+multithreaded_merged = VariableLinker.merge_mappings(data_2021, multithreaded_mapping)
+multithreaded_tree = VariableLinker.build_tree(data_2021, multithreaded_merged, "multithreaded_tree", "trees/")
 ```
 
 ## Advanced Features
@@ -339,19 +339,19 @@ multithreaded_tree = TreeMaker.build_tree(data_2021, multithreaded_merged, "mult
 Different thresholds can be used for different types of data:
 ```python
 # Strict matching for critical variables
-critical_mapping = TreeMaker.match_descriptions_jaccard(data_2021, data_2016, 0.95)
+critical_mapping = VariableLinker.match_descriptions_jaccard(data_2021, data_2016, 0.95)
 
 # Relaxed matching for exploratory analysis
-exploratory_mapping = TreeMaker.match_descriptions_jaccard(data_2021, data_2016, 0.7)
+exploratory_mapping = VariableLinker.match_descriptions_jaccard(data_2021, data_2016, 0.7)
 ```
 
 ### Model Selection for Transformers
 ```python
 # Use different transformer models
-mapping_mini = TreeMaker.match_descriptions_transformer(
+mapping_mini = VariableLinker.match_descriptions_transformer(
     data_2021, data_2016, 0.9, 'all-MiniLM-L6-v2'
 )
-mapping_mpnet = TreeMaker.match_descriptions_transformer(
+mapping_mpnet = VariableLinker.match_descriptions_transformer(
     data_2021, data_2016, 0.9, 'all-mpnet-base-v2'
 )
 ```
@@ -359,7 +359,7 @@ mapping_mpnet = TreeMaker.match_descriptions_transformer(
 ## Tree Analysis and Prediction
 
 ### Overview
-TreeMaker provides advanced functionality for analyzing existing tree structures and predicting missing parent nodes based on the additive property of census data.
+VariableLinker provides advanced functionality for analyzing existing tree structures and predicting missing parent nodes based on the additive property of census data.
 
 ### Key Concepts
 
@@ -382,13 +382,13 @@ The framework can parse existing Graphviz tree files to extract:
 
 ```python
 # 1. Parse existing tree file
-tree_dict = TreeMaker.parse_tree_to_dict("existing_tree.gv")
+tree_dict = VariableLinker.parse_tree_to_dict("existing_tree.gv")
 
 # 2. Extract parent-child relationships
-relationships = TreeMaker.extract_parent_child_relationships("existing_tree.gv")
+relationships = VariableLinker.extract_parent_child_relationships("existing_tree.gv")
 
 # 3. Predict missing parent nodes
-predictions = TreeMaker.predict_parent_nodes(
+predictions = VariableLinker.predict_parent_nodes(
     tree_dict=tree_dict,
     parent_child_relationships=relationships,
     target_years=['2016', '2011', '2006']
@@ -403,20 +403,20 @@ for parent_node, predictable_years in predictions.items():
 
 ```python
 # Load and process census data
-data_2021 = TreeMaker.preprocess_census_metadata("census_ca21_full_metadata.json")
-data_2016 = TreeMaker.preprocess_census_metadata("census_ca16_full_metadata.json")
+data_2021 = VariableLinker.preprocess_census_metadata("census_ca21_full_metadata.json")
+data_2016 = VariableLinker.preprocess_census_metadata("census_ca16_full_metadata.json")
 
 # Create initial tree
-mapping_21_16 = TreeMaker.match_descriptions_jaccard(data_2021, data_2016, 0.9)
-merged_df = TreeMaker.merge_mappings(data_2021, mapping_21_16)
-tree = TreeMaker.build_tree(data_2021, merged_df, "analysis_tree", "trees/")
+mapping_21_16 = VariableLinker.match_descriptions_jaccard(data_2021, data_2016, 0.9)
+merged_df = VariableLinker.merge_mappings(data_2021, mapping_21_16)
+tree = VariableLinker.build_tree(data_2021, merged_df, "analysis_tree", "trees/")
 
 # Analyze the created tree
-tree_dict = TreeMaker.parse_tree_to_dict("trees/analysis_tree")
-relationships = TreeMaker.extract_parent_child_relationships("trees/analysis_tree")
+tree_dict = VariableLinker.parse_tree_to_dict("trees/analysis_tree")
+relationships = VariableLinker.extract_parent_child_relationships("trees/analysis_tree")
 
 # Predict missing parents
-predictions = TreeMaker.predict_parent_nodes(tree_dict, relationships)
+predictions = VariableLinker.predict_parent_nodes(tree_dict, relationships)
 
 # Generate report
 print("=== Tree Analysis Report ===")
@@ -472,7 +472,7 @@ then "Total Population" can be predicted for 2016.
 # Solution: Add correct path
 import sys
 sys.path.append('../src/piccard')
-from TreeMaker import TreeMaker
+from variable_linker import VariableLinker
 ```
 
 #### File Not Found Errors
@@ -493,7 +493,7 @@ print("Files available:", os.listdir('.'))
 - Try different matching approaches
 - Check data quality and consistency
 
-### TreeMaker Static Methods
+### VariableLinker Static Methods
 
 | Method | Parameters | Returns | Description |
 |--------|------------|---------|-------------|
