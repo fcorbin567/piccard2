@@ -106,7 +106,7 @@ Static Methods
 .. list-table:: VariableLinker Static Methods
 
    :header-rows: 1
-   :widths: 20 20 20
+   :widths: 20 20 20 20
 
    * - Method
      - Parameters
@@ -230,9 +230,11 @@ Normalizes numeric ranges in text for consistent processing.
 Parses a Graphviz tree file into a dictionary structure.
 
 *Parameters:*
+
 - ``filepath`` (str): Path to the Graphviz tree file
 
 *Returns:*
+
 - ``Dict``: Dictionary mapping node IDs to their information including descriptions, year mappings, and colours
 
 *Example:*
@@ -248,9 +250,11 @@ Parses a Graphviz tree file into a dictionary structure.
 Extracts parent-child relationships from tree file edges.
 
 *Parameters:*
+
 - ``filepath`` (str): Path to the tree file (Graphviz format)
 
 *Returns:*
+
 - ``Dict[str, List[str]]``: Dictionary mapping parent nodes to their children
 
 *Example:*
@@ -266,11 +270,13 @@ Extracts parent-child relationships from tree file edges.
 Predicts parent nodes in other years using the additive property.
 
 *Parameters:*
+
 - ``tree_dict`` (Dict): Parsed tree dictionary with node info and year mappings
 - ``parent_child_relationships`` (Dict[str, List[str]]): Parent to children mapping
 - ``target_years`` (List[str]): Years to predict parents for (default: ['2016', '2011', '2006'])
 
 *Returns:*
+
 - ``Dict[str, List[str]]``: Dictionary mapping parent nodes to years in which they can be predicted
 
 *Example:*
@@ -292,10 +298,12 @@ Matching Approaches
 Uses token-based similarity to match descriptions across years.
 
 **Advantages:**
+
 * Good for exact and near-exact matches
 * Language-agnostic
 
 **Disadvantages:**
+
 * May miss semantic similarities
 * Sensitive to phrasing
 
@@ -318,12 +326,14 @@ Uses token-based similarity to match descriptions across years.
 Uses pre-trained sentence transformers for semantic similarity matching.
 
 **Advantages:**
+
 * Captures semantic meaning
 * Better for paraphrased descriptions
 * Robust to word variations
 * Faster than Jaccard since it uses vectorization
 
 **Disadvantages:**
+
 * Limited ability to process numeric values and ranges in text descriptions
 
 **Usage:**
@@ -346,10 +356,12 @@ Uses pre-trained sentence transformers for semantic similarity matching.
 Enhanced version of sentence transformer that uses details for breaking ties when multiple exact matches are found.
 
 **Advantages:**
+
 * Attempts better disambiguation using details field
 * More sophisticated exact matching strategy
 
 **Disadvantages**
+
 * Performance evaluation indicates higher error rate than basic transformer
 * Higher computational complexity without performance benefit
 
@@ -372,6 +384,7 @@ Enhanced version of sentence transformer that uses details for breaking ties whe
 Jaccard similarity approach with multithreaded execution for enhanced performance on large datasets.
 
 **Advantages:**
+
 * Parallel processing for similarity matching phase
 * Configurable number of worker threads (default: 4)
 * Thread-safe operations for similarity matching
