@@ -20,10 +20,10 @@ Requirements
 * typing-extensions>=4.0.0
 * hatchling>=1.0.0 
 
-In addition, when using the second and third modules, you will need to install `tscluster` and `ppandas` respectively.
+In addition, when using the second and third modules, you will need to install ``tscluster`` and ``ppandas`` respectively.
 Keep reading this section for instructions on installing those packages.
 
-Installing `piccard`
+Installing ``piccard``
 --------------------
 
 To install the current released version:
@@ -46,10 +46,10 @@ Then import:
     import piccard as pc
 
 
-Installing `tscluster`
+Installing ``tscluster``
 ----------------------
 
-`tscluster` requires the following:
+``tscluster`` requires the following:
 
 * Python 3.8+
 * numpy>=1.26 
@@ -84,10 +84,10 @@ Then import:
     from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
 
 
-Installing `ppandas`
+Installing ``ppandas``
 ----------------------
 
-`ppandas` requires the following:
+``ppandas`` requires the following:
 
 * pgmpy==0.1.9
 * networkx==2.4

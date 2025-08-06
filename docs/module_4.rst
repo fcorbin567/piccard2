@@ -1,49 +1,33 @@
 Module 4: VariableLinker
 ==================
 
-VariableLinker: Census Data Harmonization and Visualization Framework
-------------
-
-Table of Contents
-1. [Overview](#overview)
-2. [Installation and Setup](#installation-and-setup)
-3. [Core Concepts](#core-concepts)
-4. [VariableLinker Class Reference](#VariableLinker-class-reference)
-5. [Matching Approaches](#matching-approaches)
-6. [Workflow Examples](#workflow-examples)
-7. [Advanced Features](#advanced-features)
-8. [Tree Analysis and Prediction](#tree-analysis-and-prediction)
-
-
-
 Overview
+--------
 
 VariableLinker is a Python framework designed for visualizing the links between census variables across multiple years. It provides multiple approaches for matching census variables between different years and creates hierarchical tree visualizations that show how these variables are connected.
 
-#
 Key Features
-- **Multiple Matching Algorithms**: Jaccard similarity and sentence transformers
-- **Hierarchical Visualization**: Creates tree structures showing the parent-child relationships in census data
-- **Colour-coded Results**: Visual indicators for data consistency across years
+* **Multiple Matching Algorithms**: Jaccard similarity and sentence transformers
+* **Hierarchical Visualization**: Creates tree structures showing the parent-child relationships in census data
+* **Colour-coded Results**: Visual indicators for data consistency across years
 
-#
 Use Cases
-- Census data harmonization across multiple years
-- Tracking changes in census variables over time
-- Visualizing data consistency and evolution
+* Census data harmonization across multiple years
+* Tracking changes in census variables over time
+* Visualizing data consistency and evolution
 
 
 Installation and Setup
+----------------------
 
-#
 Prerequisites
 .. code-block:: bash
 
   pip install -r requirements.txt
 
 
-#
-Import VariableLinker
+
+Importing VariableLinker
 .. code-block:: python
 
   import sys
@@ -51,6 +35,7 @@ Import VariableLinker
 
 
   # Add the src/piccard directory to Python path
+  
   current_dir = os.getcwd()
   src_path = os.path.join(current_dir, '..', 'src', 'piccard')
   sys.path.append(src_path)
