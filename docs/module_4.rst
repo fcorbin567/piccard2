@@ -6,12 +6,14 @@ Overview
 
 VariableLinker is a Python framework designed for visualizing the links between census variables across multiple years. It provides multiple approaches for matching census variables between different years and creates hierarchical tree visualizations that show how these variables are connected.
 
-Key Features
+Key Features:
+
 * **Multiple Matching Algorithms**: Jaccard similarity and sentence transformers
 * **Hierarchical Visualization**: Creates tree structures showing the parent-child relationships in census data
 * **Colour-coded Results**: Visual indicators for data consistency across years
 
-Use Cases
+Use Cases:
+
 * Census data harmonization across multiple years
 * Tracking changes in census variables over time
 * Visualizing data consistency and evolution
@@ -21,13 +23,14 @@ Installation and Setup
 ----------------------
 
 Prerequisites
+
 .. code-block:: bash
 
   pip install -r requirements.txt
 
 
-
 Importing VariableLinker
+
 .. code-block:: python
 
   import sys
@@ -45,8 +48,8 @@ Importing VariableLinker
 
 
 Core Concepts
+-------------
 
-#
 1. Census Metadata Structure
 VariableLinker works with census metadata JSON files that contain:
 - **Vector identifiers**: Unique codes for census variables
@@ -54,13 +57,11 @@ VariableLinker works with census metadata JSON files that contain:
 - **Types**: Categories like "Total", "Male", "Female"
 - **Details**: Additional contextual information
 
-#
 2. Matching Process
 The framework performs two-pass matching:
 1. **Exact Match**: Find identical descriptions across years
 2. **Similarity Match**: Use similarity algorithms for inexact matches
 
-#
 3. Tree Visualization
 - **Nodes**: Represent census variables
 - **Edges**: Show parent-child relationships
@@ -72,9 +73,10 @@ The framework performs two-pass matching:
 
 
 VariableLinker Class Reference
+------------------------------
 
-#
 Class Overview
+
 .. code-block:: python
 
   class VariableLinker:
@@ -88,56 +90,64 @@ Class Overview
       - Building hierarchical tree visualizations with colour-coding
       """
 
-
-#
 Static Methods
 
-##
 ``preprocess_census_metadata(path, type_filter="Total")``
+
 Preprocesses census metadata from JSON files.
 
 **Parameters:**
+
 - ``path`` (str): Path to the JSON file containing census metadata
 - ``type_filter`` (str): Type of records to filter for (default: "Total")
 
 **Returns:**
+
 - ``pd.DataFrame``: Preprocessed DataFrame with columns ['vector', 'type', 'description', ...]
 
 **Example:**
+
 .. code-block:: python
 
     data_2021 = VariableLinker.preprocess_census_metadata("census_ca21_full_metadata.json")
 
 
-##
+
 ``jaccard_similarity(sentence1, sentence2)``
+
 Computes Jaccard similarity between two census descriptions.
 
 **Parameters:**
+
 - ``sentence1`` (str): First census description
 - ``sentence2`` (str): Second census description
 
 **Returns:**
+
 - ``float``: Jaccard similarity score between 0.0 and 1.0
 
-##
 ``process_discription_text(text)``
+
 Processes and tokenizes census text for similarity comparison.
 
 **Parameters:**
+
 - ``text`` (str): Raw census description text
 
 **Returns:**
+
 - ``set``: Set of processed tokens (words and numbers, excluding stopwords)
 
-##
 ``normalize_ranges(text)``
+
 Normalizes numeric ranges in text for consistent processing.
 
 **Parameters:**
+
 - ``text`` (str): Text containing potential numeric ranges
 
 **Returns:**
+
 - ``str``: Text with normalized numeric ranges
 
 ##

@@ -5,6 +5,7 @@ NetworkTable class
 ------------------
 
 .. code-block:: python 
+
     class NetworkTable():
         '''
         A table showing the network representation of census data. 
