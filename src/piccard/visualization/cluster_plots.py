@@ -572,6 +572,7 @@ def visual_plot_bar_means(
         varnames: Optional[List[str]] = None,
         cluster_colours: Optional[dict[int, str]] = None,
         cluster_labels: Optional[List[str]] = None,
+        title: str = "Mean Variables by Cluster Over Time",
         figsize: Tuple[float, float] = (900, 600),
 ) -> go.Figure:
     """
@@ -602,6 +603,9 @@ def visual_plot_bar_means(
 
         cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
+
+        title (str | None):
+            Figure title. Default is "Mean Variables by Cluster Over Time".
 
         figsize (Tuple[int, float]):
             Width and height of the full figure in pixels
@@ -687,7 +691,7 @@ def visual_plot_bar_means(
 
     # 6) final layout tweaks
     fig.update_layout(
-        title="Cluster Means by Variable and Year",
+        title=title,
         width=figsize[0],
         height=figsize[1],
         bargap=0.2,
