@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "piccard"
-version = "1.0.0"
+version = "1.0.1"
 authors = [
   { name="Abdulmohseen AlAli", email="abdulmohseen.alali@gmail.com" },
   { name="Elise Corbin", email="ecorbin567@gmail.com" },
@@ -40,4 +40,5 @@ dependencies = [
 
 [project.urls]
 "Homepage" = "https://github.com/ecorbin567/piccard2"
+"Documentation" = "https://piccard.readthedocs.io/en/latest/"
 "Research Paper" = "https://www.researchgate.net/publication/326137658_Visualizing_demographic_evolution_using_geographically_inconsistent_census_data"
