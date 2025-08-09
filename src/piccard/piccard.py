@@ -3,18 +3,18 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 import networkx as nx
-from typing import Union, Any, List, Tuple, Optional, Dict
+from typing import Any, List, Tuple, Optional, Dict
 from pyproj import CRS
 
 import warnings
 warnings.filterwarnings('ignore')
 
-from core.clustering import *
-from core.network import *
-from core.probabilistic_reasoning import *
-from visualization.network_visual import *
-from visualization.cluster_plots import *
-from linking.variable_linker import VariableLinker
+from .core.clustering import *
+from .core.network import *
+from .core.probabilistic_reasoning import *
+from .visualization.network_visual import *
+from .visualization.cluster_plots import *
+from .linking.variable_linker import VariableLinker
 
 # Module 1: Network Creation
 
