@@ -30,7 +30,7 @@ To install the current released version:
 
 .. code-block:: shell
 
-    pip install piccard
+    pip install piccard==1.0.2
 
 
 To install the pre-release version via git:
@@ -43,7 +43,7 @@ Then import:
 
 .. code-block:: python
     
-    import piccard as pc
+    from piccard import piccard as pc
 
 
 Installing ``tscluster``
