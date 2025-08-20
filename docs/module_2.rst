@@ -44,7 +44,8 @@ and the function will check that these columns are valid.
 * ``network_table`` (NetworkTable): 
     The NetworkTable containing the data to be clustered.
  
-* ``cols`` (list[str] | None): A list of the names of network table columns that should be considered in
+* ``cols`` (list[str] | None): 
+    A list of the names of network table columns that should be considered in
     the clustering algorithm. If none, every numerical feature will be considered. Leaving it none is
     not recommended as many numerical features, such as network level, have little bearing on the data.
 
@@ -94,7 +95,7 @@ normalization methods available in ``tscluster.preprocessing.utils``.
     ``clustering_prep`` with the default columns. See the ``clustering_prep`` documentation for why we DO NOT
     recommend leaving this blank.
         
-* ``label_dict``(dict[str, Any] | None): 
+* ``label_dict`` (dict[str, Any] | None): 
     the label dictionary corresponding to the data array. See ``arr``.
 
 *Returns:*
