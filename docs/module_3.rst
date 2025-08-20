@@ -234,7 +234,7 @@ Plots cluster assignments in their associated geographical regions for a specifi
     colour map will be used. If a cluster number is not part of the dict, plotly's default
     colour map will be used for that cluster.
 
-* ``label_dict``(dict[str, Any] | None):
+* ``label_dict`` (dict[str, Any] | None):
     The label dictionary from pc.clustering_prep() that you used in pc.cluster() or a custom 
     label dictionary. Used to determine what data will be shown when you hover over each geographical
     region. If None, only the index (path number) will be shown.
