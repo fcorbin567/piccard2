@@ -9,9 +9,17 @@ from pyproj import CRS
 import warnings
 warnings.filterwarnings('ignore')
 
-from .core.clustering import *
+TSCLUSTER_AVAILABLE = True
+try:
+    from .core.clustering import *
+except (ImportError, ModuleNotFoundError):
+    TSCLUSTER_AVAILABLE = False
+PPANDAS_AVAILABLE = True
+try:
+    from .core.probabilistic_reasoning import *
+except (ImportError, ModuleNotFoundError):
+    PPANDAS_AVAILABLE = False
 from .core.network import *
-from .core.probabilistic_reasoning import *
 from .visualization.network_visual import *
 from .visualization.cluster_plots import *
 from .linking.variable_linker import VariableLinker
@@ -169,7 +177,10 @@ def clustering_prep(
             a tuple of a 3d numpy array, a corresponding dictionary of labels showing
             the shape of the array, and the network table modified so it doesn't include any of the NaN rows.
     '''
-    return core_clustering_prep(network_table=network_table, cols=cols)
+    if TSCLUSTER_AVAILABLE:
+        return core_clustering_prep(network_table=network_table, cols=cols)
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def cluster(
@@ -224,8 +235,11 @@ def cluster(
         ClusteredNetworkTable: 
             The clustered network table.
     '''
-    return core_cluster(
-        network_table=network_table, G=G, num_clusters=num_clusters, algo=algo, scheme=scheme, arr=arr, label_dict=label_dict)
+    if TSCLUSTER_AVAILABLE:
+        return core_cluster(
+            network_table=network_table, G=G, num_clusters=num_clusters, algo=algo, scheme=scheme, arr=arr, label_dict=label_dict)
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 # Module 3: Visualization & Analysis
 
@@ -366,12 +380,15 @@ def plot_clusters_scatter(
             a list of plotly.graph_objects.Figure (you cannot show the whole list; rather, iterate through 
             the list and show each figure)
     '''
-    return visual_plot_clusters_scatter(
-        network_table=network_table, label_dict=label_dict, years=years,
-        cluster_colours=cluster_colours, dynamic_paths_only=dynamic_paths_only,
-        paths_to_show=paths_to_show, ids_to_show=ids_to_show, clusters_to_show=clusters_to_show,
-        clusters_to_exclude=clusters_to_exclude, figsize=figsize, cluster_labels=cluster_labels
-    )
+    if TSCLUSTER_AVAILABLE:
+        return visual_plot_clusters_scatter(
+            network_table=network_table, label_dict=label_dict, years=years,
+            cluster_colours=cluster_colours, dynamic_paths_only=dynamic_paths_only,
+            paths_to_show=paths_to_show, ids_to_show=ids_to_show, clusters_to_show=clusters_to_show,
+            clusters_to_exclude=clusters_to_exclude, figsize=figsize, cluster_labels=cluster_labels
+        )
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_clusters_parallelcats(
@@ -419,10 +436,13 @@ def plot_clusters_parallelcats(
         plotly.graph_objects.Figure: 
             The interactive map
     """
-    return visual_plot_clusters_parallelcats(
-        network_table=network_table, years=years, cluster_colours=cluster_colours,
-        colour_index_year=colour_index_year, cluster_labels=cluster_labels, figsize=figsize
-    )
+    if TSCLUSTER_AVAILABLE:
+        return visual_plot_clusters_parallelcats(
+            network_table=network_table, years=years, cluster_colours=cluster_colours,
+            colour_index_year=colour_index_year, cluster_labels=cluster_labels, figsize=figsize
+        )
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_clusters_area(
@@ -467,10 +487,13 @@ def plot_clusters_area(
         plotly.graph_objects.Figure: 
             The interactive map
     """
-    return visual_plot_clusters_area(
-        network_table=network_table, years=years, cluster_colours=cluster_colours,
-        cluster_labels=cluster_labels, figsize=figsize, stacked=stacked
-    )
+    if TSCLUSTER_AVAILABLE:
+        return visual_plot_clusters_area(
+            network_table=network_table, years=years, cluster_colours=cluster_colours,
+            cluster_labels=cluster_labels, figsize=figsize, stacked=stacked
+        )
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_clusters_map(
@@ -515,15 +538,18 @@ def plot_clusters_map(
         plotly.express.choropleth: 
             The interactive choropleth map
     """
-    return visual_plot_clusters_map(
-        year=year,
-        cluster_colours=cluster_colours,
-        label_dict=label_dict,
-        cluster_labels=cluster_labels,
-        geofile_path=geofile_path,
-        network_table=network_table,
-        figsize=figsize
-    )
+    if TSCLUSTER_AVAILABLE:
+        return visual_plot_clusters_map(
+            year=year,
+            cluster_colours=cluster_colours,
+            label_dict=label_dict,
+            cluster_labels=cluster_labels,
+            geofile_path=geofile_path,
+            network_table=network_table,
+            figsize=figsize
+        )
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_line_means(
@@ -575,16 +601,19 @@ def plot_line_means(
         plotly.graph_objects.Figure:
             The composed line chart with subplots.
     """
-    return visual_plot_line_means(
-        network_table=network_table,
-        selected_features=selected_features,
-        years=years,
-        varnames=varnames,
-        cluster_colours=cluster_colours,
-        cluster_labels=cluster_labels,
-        title=title,
-        figsize=figsize
-    )
+    if TSCLUSTER_AVAILABLE:
+        return visual_plot_line_means(
+            network_table=network_table,
+            selected_features=selected_features,
+            years=years,
+            varnames=varnames,
+            cluster_colours=cluster_colours,
+            cluster_labels=cluster_labels,
+            title=title,
+            figsize=figsize
+        )
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_bar_means(
@@ -639,16 +668,19 @@ def plot_bar_means(
         bars for clusters across the selected features
 
     """
-    return visual_plot_bar_means(
-        network_table=network_table,
-        selected_features=selected_features,
-        years=years,
-        varnames=varnames,
-        cluster_colours=cluster_colours,
-        cluster_labels=cluster_labels,
-        title=title,
-        figsize=figsize
-    )
+    if TSCLUSTER_AVAILABLE:
+        return visual_plot_bar_means(
+            network_table=network_table,
+            selected_features=selected_features,
+            years=years,
+            varnames=varnames,
+            cluster_colours=cluster_colours,
+            cluster_labels=cluster_labels,
+            title=title,
+            figsize=figsize
+        )
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def radar_chart_multiple_years(
@@ -696,16 +728,19 @@ def radar_chart_multiple_years(
         plotly.graph_objects.Figure:
             The resulting radar chart.
     """
-    return visual_radar_chart_multiple_years(
-        network_table=network_table,
-        selected_cluster=selected_cluster,
-        selected_features=selected_features,
-        years=years,
-        varnames=varnames,
-        year_colours=year_colours,
-        cluster_label=cluster_label,
-        figsize=figsize
-    )
+    if TSCLUSTER_AVAILABLE:
+        return visual_radar_chart_multiple_years(
+            network_table=network_table,
+            selected_cluster=selected_cluster,
+            selected_features=selected_features,
+            years=years,
+            varnames=varnames,
+            year_colours=year_colours,
+            cluster_label=cluster_label,
+            figsize=figsize
+        )
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def radar_chart_multiple_clusters(
@@ -752,16 +787,19 @@ def radar_chart_multiple_clusters(
         go.Figure:
             The Plotly figure containing one polar trace per cluster.
     """
-    return visual_radar_chart_multiple_clusters(
-        network_table=network_table,
-        selected_year=selected_year,
-        selected_features=selected_features,
-        clusters=clusters,
-        varnames=varnames,
-        cluster_colours=cluster_colours,
-        cluster_labels=cluster_labels,
-        figsize=figsize
-    )
+    if TSCLUSTER_AVAILABLE:
+        return visual_radar_chart_multiple_clusters(
+            network_table=network_table,
+            selected_year=selected_year,
+            selected_features=selected_features,
+            clusters=clusters,
+            varnames=varnames,
+            cluster_colours=cluster_colours,
+            cluster_labels=cluster_labels,
+            figsize=figsize
+        )
+    else:
+        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def prob_reasoning_networks(
@@ -784,8 +822,8 @@ def prob_reasoning_networks(
     regions using different units.
     
     The second list of independent variables must be a subset of the first, so make sure the column names are the same
-    before passing them into this function. However, mismatches in independent variable column data allowed by ppandas
-    are okay.
+    before passing them into this function. Note that mismatches in independent variable column data allowed by ppandas
+    are not yet supported, but will be in the future.
 
     Parameters:
         network_table_1 (NetworkTable | pd.DataFrame | gpd.GeoDataFrame): 
@@ -824,14 +862,17 @@ def prob_reasoning_networks(
 
     TODO: Finish handling mismatches by modifying network tables
     '''
-    return core_prob_reasoning_networks(network_table_1=network_table_1,
-                                        network_table_2=network_table_2,
-                                        independent_vars_1=independent_vars_1,
-                                        independent_vars_2=independent_vars_2,
-                                        dependent_vars_1=dependent_vars_1,
-                                        dependent_vars_2=dependent_vars_2,
-                                        mismatches=mismatches,
-                                        modify_tables=modify_tables)
+    if PPANDAS_AVAILABLE:
+        return core_prob_reasoning_networks(network_table_1=network_table_1,
+                                            network_table_2=network_table_2,
+                                            independent_vars_1=independent_vars_1,
+                                            independent_vars_2=independent_vars_2,
+                                            dependent_vars_1=dependent_vars_1,
+                                            dependent_vars_2=dependent_vars_2,
+                                            mismatches=mismatches,
+                                            modify_tables=modify_tables)
+    else:
+        print("Sorry, you need to install `ppandas` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def prob_reasoning_years(
@@ -894,16 +935,19 @@ def prob_reasoning_years(
 
     TODO: Finish handling mismatches by modifying network tables
     '''
-    return core_prob_reasoning_years(
-        network_table=network_table,
-        year_1=year_1,
-        year_2=year_2,
-        independent_vars_1=independent_vars_1,
-        independent_vars_2=independent_vars_2,
-        dependent_vars_1=dependent_vars_1,
-        dependent_vars_2=dependent_vars_2,
-        mismatches=mismatches,
-        modify_tables=modify_tables)
+    if PPANDAS_AVAILABLE:
+        return core_prob_reasoning_years(
+            network_table=network_table,
+            year_1=year_1,
+            year_2=year_2,
+            independent_vars_1=independent_vars_1,
+            independent_vars_2=independent_vars_2,
+            dependent_vars_1=dependent_vars_1,
+            dependent_vars_2=dependent_vars_2,
+            mismatches=mismatches,
+            modify_tables=modify_tables)
+    else:
+        print("Sorry, you need to install `ppandas` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 # Module 4: VariableLinker
