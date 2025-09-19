@@ -559,7 +559,6 @@ def plot_line_means(
         varnames: Optional[List[str]] = None,
         cluster_colours: Optional[dict[int, str]] = None,
         cluster_labels: Optional[List[str]] = None,
-        title: str = "Mean Variables by Cluster Over Time",
         figsize: Tuple[float, float] = (700, 500),
 ) -> go.Figure:
     """
@@ -590,9 +589,6 @@ def plot_line_means(
         cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
-        title (str | None):
-            Figure title. Default is "Mean Variables by Cluster Over Time".
-
         figsize (Tuple[float, float] | None):
             Width and height of the overall figure in pixels. Default is (700, 500).
 
@@ -609,7 +605,6 @@ def plot_line_means(
             varnames=varnames,
             cluster_colours=cluster_colours,
             cluster_labels=cluster_labels,
-            title=title,
             figsize=figsize
         )
     else:
@@ -623,7 +618,6 @@ def plot_bar_means(
         varnames: Optional[List[str]] = None,
         cluster_colours: Optional[dict[int, str]] = None,
         cluster_labels: Optional[List[str]] = None,
-        title: str = "Mean Variables by Cluster Over Time",
         figsize: Tuple[float, float] = (700, 500),
 ) -> go.Figure:
     """
@@ -655,9 +649,6 @@ def plot_bar_means(
         cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
 
-        title (str | None):
-            Figure title. Default is "Mean Variables by Cluster Over Time".
-
         figsize (Tuple[int, float]):
             Width and height of the full figure in pixels
 
@@ -676,7 +667,6 @@ def plot_bar_means(
             varnames=varnames,
             cluster_colours=cluster_colours,
             cluster_labels=cluster_labels,
-            title=title,
             figsize=figsize
         )
     else:

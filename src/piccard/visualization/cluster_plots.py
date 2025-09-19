@@ -210,6 +210,7 @@ def visual_plot_clusters_scatter(
                 
         # create layout and add figure to return list
         fig.update_layout(
+            title="Scatterplot of Cluster Means for Single Variable Over Time",
             width=figsize[0],
             height=figsize[1],
             title=label_dict['F'][f],
@@ -450,7 +451,6 @@ def visual_plot_line_means(
         varnames: Optional[List[str]] = None,
         cluster_colours: Optional[dict[int, str]] = None,
         cluster_labels: Optional[List[str]] = None,
-        title: str = "Mean Variables by Cluster Over Time",
         figsize: Tuple[float, float] = (900, 600),
 ) -> go.Figure:
     """
@@ -480,9 +480,6 @@ def visual_plot_line_means(
 
         cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
-
-        title (str):
-            Figure title.
 
         figsize (Tuple[float, float]):
             Width and height of the overall figure in pixels.
@@ -555,7 +552,7 @@ def visual_plot_line_means(
 
     # 4) Final layout
     fig.update_layout(
-        title=title,
+        title="Mean Variable Values by Cluster Over Time",
         width=figsize[0],
         height=figsize[1],
         legend_title_text="Cluster",
@@ -572,7 +569,6 @@ def visual_plot_bar_means(
         varnames: Optional[List[str]] = None,
         cluster_colours: Optional[dict[int, str]] = None,
         cluster_labels: Optional[List[str]] = None,
-        title: str = "Mean Variables by Cluster Over Time",
         figsize: Tuple[float, float] = (900, 600),
 ) -> go.Figure:
     """
@@ -603,9 +599,6 @@ def visual_plot_bar_means(
 
         cluster_labels (List[str] | None): 
             A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
-
-        title (str | None):
-            Figure title. Default is "Mean Variables by Cluster Over Time".
 
         figsize (Tuple[int, float]):
             Width and height of the full figure in pixels
@@ -691,7 +684,7 @@ def visual_plot_bar_means(
 
     # 6) final layout tweaks
     fig.update_layout(
-        title=title,
+        title="Mean Variable Values by Cluster Over Time",
         width=figsize[0],
         height=figsize[1],
         bargap=0.2,
@@ -1043,6 +1036,7 @@ def visual_plot_clusters_map(
     )
 
     fig.update_layout(
+        title=f"Cluster Assignments in {year}",
         width=figsize[0],
         height=figsize[1],
         legend_title_text="Cluster"
