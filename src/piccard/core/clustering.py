@@ -289,10 +289,10 @@ def core_filter_columns(
                     break
                 try:
                     int(entry)  # see if it is either an int or an int masquerading as a string
-                except ValueError:
+                except (ValueError, TypeError):
                     try:
                         float(entry)  # see if it is either a float or a float masquerading as a string
-                    except ValueError:
+                    except (ValueError, TypeError):
                         if entry != 'NaN' and entry != 'nan': # see if it is nan
                             non_numerical_val_in_col = True
                             break
