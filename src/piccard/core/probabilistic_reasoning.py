@@ -1,7 +1,8 @@
 import pandas as pd
 import geopandas as gpd
 from typing import Optional, List
-from p_frame import PDataFrame
+from ppandas.p_frame import PDataFrame
+
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -98,7 +99,7 @@ def core_prob_reasoning_networks(
 
 
 def core_prob_reasoning_years(
-    network_table: NetworkTable,  
+    network_table: NetworkTable,
     year_1: str,
     year_2: str,
     independent_vars_1: List[str], 

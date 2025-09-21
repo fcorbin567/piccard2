@@ -12,6 +12,9 @@ import piccard as pc
 
 @pytest.fixture
 def create_datasets():
+    '''
+    Set up tests by reading and preparing datasets to make a network from.
+    '''
     housing_data_06 = gpd.read_file("tests/testing_data/housing_data_06.geojson")
     housing_data_06.rename(columns={'v_CA06_2054: Average value of dwelling $': 'avg_value',
                                 'v_CA06_2059: Average gross rent $': 'avg_rent',
@@ -32,16 +35,6 @@ def create_datasets():
                                 'v_CA21_4318: Average monthly shelter costs for rented dwellings ($) (59)': 'avg_rent',
                                 'v_CA21_605: Average total income in 2020 among recipients ($)': 'avg_income'
                                 }, inplace=True)
-    housing_data_coreneed_21 = gpd.read_file("tests/testing_data/housing_data_coreneed_21.geojson")
-    housing_data_coreneed_21.rename(columns={'v_CA21_4312: Average value of dwellings ($) (60)': 'avg_value',
-                                    'v_CA21_4318: Average monthly shelter costs for rented dwellings ($) (59)': 'avg_rent',
-                                    'v_CA21_605: Average total income in 2020 among recipients ($)': 'avg_income'
-                                    }, inplace=True)
-    housing_data_coreneed_21['pct_coreneed'] = housing_data_coreneed_21[
-        'v_CA21_4303: In core need'] / housing_data_coreneed_21['v_CA21_4302: Total - Owner and tenant households with household ' \
-        'total income greater than zero and shelter-cost-to-income ratio less than 100%, in non-farm, non-reserve private dwellings']
-    housing_data_coreneed_21 = housing_data_coreneed_21.drop(['v_CA21_4303: In core need', 'v_CA21_4302: Total - Owner and tenant households with household ' \
-        'total income greater than zero and shelter-cost-to-income ratio less than 100%, in non-farm, non-reserve private dwellings'], axis=1)
     
     census_dfs = [housing_data_06, housing_data_11, housing_data_16, housing_data_21]
     return census_dfs

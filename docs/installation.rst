@@ -106,4 +106,4 @@ Then import:
 
 .. code-block:: python
 
-    from p_frame import PDataFrame
+    from ppandas.p_frame import PDataFrame

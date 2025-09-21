@@ -184,7 +184,7 @@ def clustering_prep(
     if TSCLUSTER_AVAILABLE:
         return core_clustering_prep(network_table=network_table, cols=cols)
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def cluster(
@@ -243,7 +243,7 @@ def cluster(
         return core_cluster(
             network_table=network_table, G=G, num_clusters=num_clusters, algo=algo, scheme=scheme, arr=arr, label_dict=label_dict)
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 # Module 3: Visualization & Analysis
 
@@ -392,7 +392,7 @@ def plot_clusters_scatter(
             clusters_to_exclude=clusters_to_exclude, figsize=figsize, cluster_labels=cluster_labels
         )
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_clusters_parallelcats(
@@ -446,7 +446,7 @@ def plot_clusters_parallelcats(
             colour_index_year=colour_index_year, cluster_labels=cluster_labels, figsize=figsize
         )
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_clusters_area(
@@ -497,7 +497,7 @@ def plot_clusters_area(
             cluster_labels=cluster_labels, figsize=figsize, stacked=stacked
         )
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_clusters_map(
@@ -553,7 +553,7 @@ def plot_clusters_map(
             figsize=figsize
         )
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_line_means(
@@ -612,7 +612,7 @@ def plot_line_means(
             figsize=figsize
         )
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def plot_bar_means(
@@ -674,7 +674,7 @@ def plot_bar_means(
             figsize=figsize
         )
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def radar_chart_multiple_years(
@@ -734,7 +734,7 @@ def radar_chart_multiple_years(
             figsize=figsize
         )
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def radar_chart_multiple_clusters(
@@ -793,7 +793,7 @@ def radar_chart_multiple_clusters(
             figsize=figsize
         )
     else:
-        print("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `tscluster` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def prob_reasoning_networks(
@@ -866,7 +866,7 @@ def prob_reasoning_networks(
                                             mismatches=mismatches,
                                             modify_tables=modify_tables)
     else:
-        print("Sorry, you need to install `ppandas` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `ppandas` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 def prob_reasoning_years(
@@ -941,7 +941,7 @@ def prob_reasoning_years(
             mismatches=mismatches,
             modify_tables=modify_tables)
     else:
-        print("Sorry, you need to install `ppandas` to use this module of `piccard`. See the documentation for installation instructions.")
+        raise ModuleNotFoundError("Sorry, you need to install `ppandas` to use this module of `piccard`. See the documentation for installation instructions.")
 
 
 # Module 4: VariableLinker
