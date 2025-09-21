@@ -30,7 +30,12 @@ Module 1 Functions
 ``preprocessing``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Returns a cleaned ``geopandas`` GeoDataFrame of the input data. Uses parallel processing for very large (>100,000 rows) datasets. Note: Input data is assumed to have been passed through ``gpd.read_file()`` beforehand.
+Not necessary for network table creation, but you may optionally run this function yourself, for example
+if you want details of the dataframe cleaning but not the network creation, or if you want to try out
+different CRSs.
+Returns a cleaned ``geopandas`` df of the input data. Uses parallel processing for very large (>100,000 rows) datasets.
+Also adds a column for each year with calculated areas of each census tract in that year.
+Note: Input data is assumed to have been passed through ``gpd.read_file()`` beforehand.
 
 *Parameters:*
 

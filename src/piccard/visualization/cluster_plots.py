@@ -210,7 +210,6 @@ def visual_plot_clusters_scatter(
                 
         # create layout and add figure to return list
         fig.update_layout(
-            title="Scatterplot of Cluster Means for Single Variable Over Time",
             width=figsize[0],
             height=figsize[1],
             title=label_dict['F'][f],

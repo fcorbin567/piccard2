@@ -281,9 +281,6 @@ For each year in ``years``, plots the mean value of each feature in
 
 * ``cluster_labels`` (List[str] | None): 
     A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
-
-* ``title`` (str):
-    Figure title. Default is "Mean Variables by Cluster Over Time".
         
 * ``figsize`` (Tuple[float, float] | None): 
     A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
@@ -324,9 +321,6 @@ grid with two columns.
 
 * ``cluster_labels`` (List[str] | None): 
     A custom list of cluster names. Default is Cluster 0, ..., Cluster n.
-
-* ``title`` (str):
-    Figure title. Default is "Mean Variables by Cluster Over Time".
         
 * ``figsize`` (Tuple[float, float] | None): 
     A tuple indicating the width and height of each figure that will be shown. Default is (700, 500).
@@ -431,8 +425,8 @@ This function is recommended if you have datasets from different sources or data
 regions using different units.
     
 The second list of independent variables must be a subset of the first, so make sure the column names are the same
-before passing them into this function. However, mismatches in independent variable column data allowed by ``ppandas``
-are okay.
+before passing them into this function. Mismatches in independent variable column data allowed by ``ppandas``
+are not yet supported, but they will be in a later update.
 
 *Parameters:*
 
@@ -482,8 +476,8 @@ Takes in two years from the same network table and lists of independent and depe
 and returns the resulting PDataFrame (which can be used to obtain information about conditional probabilities).
     
 The second list of independent variables must be a subset of the first, so make sure the column names are the same
-before passing them into this function. However, mismatches in independent variable column data allowed by ``ppandas``
-are okay.
+before passing them into this function. Mismatches in independent variable column data allowed by ``ppandas``
+are not yet supported, but they will be in a later update.
 
 *Parameters:*
 

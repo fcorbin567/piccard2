@@ -67,6 +67,8 @@ def core_prob_reasoning_networks(
 
     TODO: Finish handling mismatches by modifying network tables
     '''
+    if mismatches is not None:
+        raise NotImplementedError("Sorry, we haven't gotten around to implementing support for mismatches yet!")
     if type(network_table_1) == gpd.GeoDataFrame or type(network_table_1) == pd.DataFrame:
         table_1 = network_table_1
     else:
@@ -155,6 +157,8 @@ def core_prob_reasoning_years(
 
     TODO: Finish handling mismatches by modifying network tables
     '''
+    if mismatches is not None:
+        raise NotImplementedError("Sorry, we haven't gotten around to implementing support for mismatches yet!")
     if any(var[-4:] != year_1 for var in list(set(independent_vars_1) | set(dependent_vars_1))):
         raise ValueError("Please make sure all variables in independent_vars_1 and dependent_vars_1 end in year_1.")
     if any(var[-4:] != year_2 for var in list(set(independent_vars_2) | set(dependent_vars_2))):

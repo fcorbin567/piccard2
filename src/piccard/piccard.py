@@ -11,18 +11,18 @@ warnings.filterwarnings('ignore')
 
 TSCLUSTER_AVAILABLE = True
 try:
-    from .core.clustering import *
+    from core.clustering import *
 except (ImportError, ModuleNotFoundError):
     TSCLUSTER_AVAILABLE = False
 PPANDAS_AVAILABLE = True
 try:
-    from .core.probabilistic_reasoning import *
+    from core.probabilistic_reasoning import *
 except (ImportError, ModuleNotFoundError):
     PPANDAS_AVAILABLE = False
-from .core.network import *
-from .visualization.network_visual import *
-from .visualization.cluster_plots import *
-from .linking.variable_linker import VariableLinker
+from core.network import *
+from visualization.network_visual import *
+from visualization.cluster_plots import *
+from linking.variable_linker import VariableLinker
 
 # Module 1: Network Creation
 
@@ -34,7 +34,11 @@ def preprocessing(
     verbose: Optional[bool] = True
 ) -> gpd.GeoDataFrame:
     '''
+    Not necessary for network table creation, but you may optionally run this function yourself, for example
+    if you want details of the dataframe cleaning but not the network creation, or if you want to try out
+    different CRSs.
     Returns a cleaned geopandas df of the input data. Uses parallel processing for very large (>100,000 rows) datasets.
+    Also adds a column for each year with calculated areas of each census tract in that year.
     Note: Input data is assumed to have been passed through gpd.read_file() beforehand.
 
     Parameters:
@@ -801,7 +805,7 @@ def prob_reasoning_networks(
     dependent_vars_2: List[str], 
     mismatches: Optional[dict[str, str]] = None, 
     modify_tables: Optional[bool] = False
-) -> PDataFrame:
+): # -> PDataFrame but python gets mad if I annotate this bc PDataFrame may not be defined
     '''
     Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
     For more information about ppandas, visit: https://github.com/D3Mlab/ppandas/tree/master
@@ -875,7 +879,7 @@ def prob_reasoning_years(
     dependent_vars_2: List[str], 
     mismatches: Optional[dict[str, str]] = None, 
     modify_tables: Optional[bool] = False
-) -> PDataFrame:
+): # -> PDataFrame but python gets mad if I annotate this bc PDataFrame may not be defined
     '''
     Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
     For more information about ppandas, visit: https://github.com/D3Mlab/ppandas/tree/master
