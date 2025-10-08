@@ -804,7 +804,6 @@ def prob_reasoning_networks(
     dependent_vars_1: List[str], 
     dependent_vars_2: List[str], 
     mismatches: Optional[dict[str, str]] = None, 
-    modify_tables: Optional[bool] = False
 ): # -> PDataFrame but python gets mad if I annotate this bc PDataFrame may not be defined
     '''
     Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
@@ -816,8 +815,8 @@ def prob_reasoning_networks(
     regions using different units.
     
     The second list of independent variables must be a subset of the first, so make sure the column names are the same
-    before passing them into this function. Note that mismatches in independent variable column data allowed by ppandas
-    are not yet supported, but will be in the future.
+    before passing them into this function. However, mismatches in independent variable column data allowed by ppandas
+    are okay.
 
     Parameters:
         network_table_1 (NetworkTable | pd.DataFrame | gpd.GeoDataFrame): 
@@ -846,15 +845,9 @@ def prob_reasoning_networks(
             A dictionary of the mismatches PDataFrame.pjoin will handle. Must be in format 
             {<independent variable name>: <'categorical' | 'numerical' | 'spatial'> }. See the link above for more information.
 
-        modify_tables (bool | None):
-            A boolean indicating whether to modify table values to fix the mismatch(es), if applicable.
-            Default is False.
-
     Returns:
         PDataFrame:
             The result of joining the two probabilistic models of network tables.
-
-    TODO: Finish handling mismatches by modifying network tables
     '''
     if PPANDAS_AVAILABLE:
         return core_prob_reasoning_networks(network_table_1=network_table_1,
@@ -863,8 +856,7 @@ def prob_reasoning_networks(
                                             independent_vars_2=independent_vars_2,
                                             dependent_vars_1=dependent_vars_1,
                                             dependent_vars_2=dependent_vars_2,
-                                            mismatches=mismatches,
-                                            modify_tables=modify_tables)
+                                            mismatches=mismatches)
     else:
         raise ModuleNotFoundError("Sorry, you need to install `ppandas` to use this module of `piccard`. See the documentation for installation instructions.")
 
@@ -877,8 +869,7 @@ def prob_reasoning_years(
     independent_vars_2: List[str], 
     dependent_vars_1: List[str], 
     dependent_vars_2: List[str], 
-    mismatches: Optional[dict[str, str]] = None, 
-    modify_tables: Optional[bool] = False
+    mismatches: Optional[dict[str, str]] = None
 ): # -> PDataFrame but python gets mad if I annotate this bc PDataFrame may not be defined
     '''
     Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
@@ -919,15 +910,9 @@ def prob_reasoning_years(
             A dictionary of the mismatches PDataFrame.pjoin will handle. Must be in format 
             {<independent variable name>: <'categorical' | 'numerical' | 'spatial'> }. See the link above for more information.
 
-        modify_tables (bool | None):
-            A boolean indicating whether to modify table values to fix the mismatch(es), if applicable.
-            Default is False.
-
     Returns:
         PDataFrame:
             The result of joining the two probabilistic models.
-
-    TODO: Finish handling mismatches by modifying network tables
     '''
     if PPANDAS_AVAILABLE:
         return core_prob_reasoning_years(
@@ -938,8 +923,7 @@ def prob_reasoning_years(
             independent_vars_2=independent_vars_2,
             dependent_vars_1=dependent_vars_1,
             dependent_vars_2=dependent_vars_2,
-            mismatches=mismatches,
-            modify_tables=modify_tables)
+            mismatches=mismatches)
     else:
         raise ModuleNotFoundError("Sorry, you need to install `ppandas` to use this module of `piccard`. See the documentation for installation instructions.")
 

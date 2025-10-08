@@ -425,8 +425,8 @@ This function is recommended if you have datasets from different sources or data
 regions using different units.
     
 The second list of independent variables must be a subset of the first, so make sure the column names are the same
-before passing them into this function. Mismatches in independent variable column data allowed by ``ppandas``
-are not yet supported, but they will be in a later update.
+before passing them into this function. However, mismatches in independent variable column data allowed by ``ppandas``
+are okay.
 
 *Parameters:*
 
@@ -456,10 +456,6 @@ are not yet supported, but they will be in a later update.
     A dictionary of the mismatches PDataFrame.pjoin will handle. Must be in format 
     {<independent variable name>: <'categorical' \| 'numerical' \| 'spatial'> }. See the link above for more information.
 
-* ``modify_tables`` (bool | None):
-    A boolean indicating whether to modify table values to fix the mismatch(es), if applicable.
-    Default is False.
-
 *Returns:*
 
 * ``PDataFrame``:
@@ -477,7 +473,7 @@ and returns the resulting PDataFrame (which can be used to obtain information ab
     
 The second list of independent variables must be a subset of the first, so make sure the column names are the same
 before passing them into this function. Mismatches in independent variable column data allowed by ``ppandas``
-are not yet supported, but they will be in a later update.
+are okay.
 
 *Parameters:*
 
@@ -507,10 +503,6 @@ are not yet supported, but they will be in a later update.
 * ``mismatches`` (dict[str, str] | None):
     A dictionary of the mismatches PDataFrame.pjoin will handle. Must be in format 
     <independent variable name>: <'categorical' \| 'numerical' \| 'spatial'> }. See the link above for more information.
-
-* ``modify_tables`` (bool | None):
-    A boolean indicating whether to modify table values to fix the mismatch(es), if applicable.
-    Default is False.
 
 *Returns:*
 

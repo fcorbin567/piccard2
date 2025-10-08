@@ -75,14 +75,6 @@ To install the pre-release version via git:
 
     pip install git+https://github.com/tscluster-project/tscluster.git
 
-Then import:
-
-.. code-block:: python
-    
-    from tscluster.opttscluster import OptTSCluster
-    from tscluster.greedytscluster import GreedyTSCluster
-    from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
-
 
 Installing ``ppandas``
 ----------------------
@@ -100,10 +92,4 @@ To install via git:
 
 .. code-block:: shell
 
-    pip install git+https://github.com/D3Mlab/ppandas.git
-
-Then import:
-
-.. code-block:: python
-
-    from ppandas.p_frame import PDataFrame
+    pip install git+https://github.com/ecorbin567/ppandas.git
