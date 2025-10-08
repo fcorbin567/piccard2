@@ -6,7 +6,7 @@ The latest release of piccard is available on PyPI at https://pypi.org/project/p
 
 To install the latest release, run:
 ```bash
-pip install piccard==1.1.0
+pip install piccard==1.1.1
 ```
 Then import the package using:
 ```python
