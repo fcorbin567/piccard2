@@ -104,7 +104,10 @@ def core_prob_reasoning_networks(
                         old_values = cpd.values
                         parents = cpd.variables[1:]
                         parent_states = [cpd.state_names[p] for p in parents]
-                        new_shape = (len(all_cats),) + old_values.shape[1:]
+                        if parents:
+                            new_shape = (len(all_cats),) + old_values.shape[1:]
+                        else:
+                            new_shape = (len(all_cats), 1)
                         new_values = np.zeros(new_shape)
                         cat_idx_map = {cat: i for i, cat in enumerate(all_cats)}
                         # Copy over the original probabilities for existing categories only
@@ -118,7 +121,7 @@ def core_prob_reasoning_networks(
                             variable_card=len(all_cats),
                             values=new_values,
                             evidence=parents,
-                            evidence_card=[len(s) for s in parent_states] if parents else None,
+                            evidence_card=[len(s) for s in parent_states] if parents else [],
                             state_names={cpd.variable: all_cats, **{p: s for p, s in zip(parents, parent_states)}}
                         )
                         joined_pdf.bayes_net.remove_cpds(cpd)
@@ -225,7 +228,10 @@ def core_prob_reasoning_years(
                         old_values = cpd.values
                         parents = cpd.variables[1:]
                         parent_states = [cpd.state_names[p] for p in parents]
-                        new_shape = (len(all_cats),) + old_values.shape[1:]
+                        if parents:
+                            new_shape = (len(all_cats),) + old_values.shape[1:]
+                        else:
+                            new_shape = (len(all_cats), 1)
                         new_values = np.zeros(new_shape)
                         cat_idx_map = {cat: i for i, cat in enumerate(all_cats)}
                         # Copy over the original probabilities for existing categories only
@@ -239,7 +245,7 @@ def core_prob_reasoning_years(
                             variable_card=len(all_cats),
                             values=new_values,
                             evidence=parents,
-                            evidence_card=[len(s) for s in parent_states] if parents else None,
+                            evidence_card=[len(s) for s in parent_states] if parents else [],
                             state_names={cpd.variable: all_cats, **{p: s for p, s in zip(parents, parent_states)}}
                         )
                         joined_pdf.bayes_net.remove_cpds(cpd)
