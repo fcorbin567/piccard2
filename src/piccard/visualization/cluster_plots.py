@@ -7,11 +7,8 @@ import plotly
 import plotly.express as px
 from plotly.subplots import make_subplots
 import math
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from core.clustering import *
-from core.network import core_join_geometries
+from ..core.clustering import *
+from ..core.network import core_join_geometries
 
 def visual_plot_clusters_scatter(
     network_table: ClusteredNetworkTable,

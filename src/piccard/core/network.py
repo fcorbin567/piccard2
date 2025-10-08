@@ -606,3 +606,7 @@ def core_attach_attributes(network_table, attributes, years, final_cols, id):
   #Combining all years dfs into one
   network_table = (pd.concat(years_df_list, axis=1)).dropna(how='all', axis=1)
   return network_table
+
+# Public API aliases for piccard (must be after all function definitions)
+create_network = core_create_network
+create_network_table = core_create_network_table

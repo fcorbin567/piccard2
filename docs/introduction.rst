@@ -27,6 +27,18 @@ The third module, visualization and analysis, provides highly customizable and a
 
 Finally, the fourth module, VariableLinker, is a tool for understanding the links between census variables over time. Like census regions, census variables change considerably over time, and VariableLinker allows users to match variables based on their semantic meaning over time.
 
+Tests
+------
+
+To run the tests for ``piccard``, clone the repository and run the following commands in the root directory: 
+
+```
+pip install -e .
+pytest --import-mode=importlib tests/
+```
+
+Do not attempt to run the tests without installing piccard as a package via pip, as the tests rely on relative imports that will not work otherwise.
+
 Example usage
 -------------
 

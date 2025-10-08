@@ -3,22 +3,9 @@ import numpy as np
 
 import sys
 import os
-from test_network_creation import create_datasets
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../src/piccard")))
 
 import piccard as pc
-
-@pytest.fixture
-def create_table(create_datasets):
-    '''
-    Set up tests by creating a network graph and table to use for clustering.
-    '''
-    census_dfs = create_datasets
-    years = ['2006', '2011', '2016', '2021']
-    G = pc.create_network(census_dfs, years, 'GeoUID')
-    network_table = pc.create_network_table(census_dfs, years, 'GeoUID')
-    return (G, network_table)
-
 
 def test_clustering_prep_cols_specified(create_table):
     '''

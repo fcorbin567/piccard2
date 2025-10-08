@@ -2,10 +2,7 @@ import random
 from typing import Optional, List
 import networkx as nx
 import plotly.graph_objects as go
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from core.network import NetworkTable
+from ..core.network import NetworkTable
 
 def visual_plot_subnetwork(
     network_table: NetworkTable, 

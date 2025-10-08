@@ -10,35 +10,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../src/
 
 import piccard as pc
 
-@pytest.fixture
-def create_datasets():
-    '''
-    Set up tests by reading and preparing datasets to make a network from.
-    '''
-    housing_data_06 = gpd.read_file("tests/testing_data/housing_data_06.geojson")
-    housing_data_06.rename(columns={'v_CA06_2054: Average value of dwelling $': 'avg_value',
-                                'v_CA06_2059: Average gross rent $': 'avg_rent',
-                                'v_CA06_1584: Average income $': 'avg_income'
-                                }, inplace=True)
-    housing_data_11 = gpd.read_file("tests/testing_data/housing_data_11.geojson")
-    housing_data_11.rename(columns={'v_CA11N_2287: Average value of dwellings ($)': 'avg_value',
-                                'v_CA11N_2292: Average monthly shelter costs for rented dwellings ($)': 'avg_rent',
-                                'v_CA11N_2344: Average income $': 'avg_income'
-                                }, inplace=True)
-    housing_data_16 = gpd.read_file("tests/testing_data/housing_data_16.geojson")
-    housing_data_16.rename(columns={'v_CA16_4896: Average value of dwellings ($)': 'avg_value',
-                                'v_CA16_4901: Average monthly shelter costs for rented dwellings ($)': 'avg_rent',
-                                'v_CA16_4957: Average total income in 2015 among recipients ($)': 'avg_income'
-                                }, inplace=True)
-    housing_data_21 = gpd.read_file("tests/testing_data/housing_data_21.geojson")
-    housing_data_21.rename(columns={'v_CA21_4312: Average value of dwellings ($) (60)': 'avg_value',
-                                'v_CA21_4318: Average monthly shelter costs for rented dwellings ($) (59)': 'avg_rent',
-                                'v_CA21_605: Average total income in 2020 among recipients ($)': 'avg_income'
-                                }, inplace=True)
-    
-    census_dfs = [housing_data_06, housing_data_11, housing_data_16, housing_data_21]
-    return census_dfs
-
 
 def test_preprocessing_default_inputs(create_datasets):
     '''

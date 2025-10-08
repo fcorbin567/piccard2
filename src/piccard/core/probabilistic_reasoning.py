@@ -1,12 +1,17 @@
+# Optional dependency: ppandas
+try:
+    from ppandas.p_frame import PDataFrame
+    PPANDAS_AVAILABLE = True
+except ImportError:
+    PPANDAS_AVAILABLE = False
+
 import pandas as pd
 import geopandas as gpd
 from typing import Optional, List
-from ppandas.p_frame import PDataFrame
-
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from core.network import NetworkTable
+
+from .network import NetworkTable
 
 def core_prob_reasoning_networks(
     network_table_1: NetworkTable | pd.DataFrame | gpd.GeoDataFrame, 

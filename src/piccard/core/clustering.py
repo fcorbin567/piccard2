@@ -1,3 +1,10 @@
+# Optional dependency: tscluster
+try:
+    import tscluster
+    TSCLUSTER_AVAILABLE = True
+except ImportError:
+    TSCLUSTER_AVAILABLE = False
+
 import numpy as np
 import pandas as pd
 from typing import Optional, Any, Tuple, Union, List
@@ -5,10 +12,8 @@ import networkx as nx
 from tscluster.opttscluster import OptTSCluster
 from tscluster.greedytscluster import GreedyTSCluster
 from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from core.network import NetworkTable
+
+from .network import NetworkTable
 
 class ClusteredNetworkTable(NetworkTable):
     '''

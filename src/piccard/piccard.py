@@ -1,4 +1,3 @@
-# type annotations
 import numpy as np
 import geopandas as gpd
 import pandas as pd
@@ -9,20 +8,45 @@ from pyproj import CRS
 import warnings
 warnings.filterwarnings('ignore')
 
-TSCLUSTER_AVAILABLE = True
-try:
-    from core.clustering import *
-except (ImportError, ModuleNotFoundError):
-    TSCLUSTER_AVAILABLE = False
-PPANDAS_AVAILABLE = True
-try:
-    from core.probabilistic_reasoning import *
-except (ImportError, ModuleNotFoundError):
-    PPANDAS_AVAILABLE = False
-from core.network import *
-from visualization.network_visual import *
-from visualization.cluster_plots import *
-from linking.variable_linker import VariableLinker
+# Optional dependency flags
+from .core.probabilistic_reasoning import PPANDAS_AVAILABLE
+from .core.clustering import TSCLUSTER_AVAILABLE
+
+# Type annotation imports
+from .core.network import NetworkTable
+from .core.clustering import ClusteredNetworkTable
+import plotly.graph_objects as go
+import plotly.express as px
+
+# Explicit public API imports for piccard
+from .core.network import (
+    core_create_network,
+    core_create_network_table,
+    core_preprocessing
+)
+from .core.probabilistic_reasoning import (
+    core_prob_reasoning_networks,
+    core_prob_reasoning_years
+)
+from .core.clustering import (
+    core_clustering_prep,
+    core_cluster
+)
+from .visualization.network_visual import (
+    visual_plot_subnetwork,
+    visual_plot_num_areas
+)
+from .visualization.cluster_plots import (
+    visual_plot_clusters_scatter,
+    visual_plot_clusters_parallelcats,
+    visual_plot_clusters_area,
+    visual_plot_clusters_map,
+    visual_plot_line_means,
+    visual_plot_bar_means,
+    visual_radar_chart_multiple_years,
+    visual_radar_chart_multiple_clusters
+)
+from .linking.variable_linker import VariableLinker
 
 # Module 1: Network Creation
 
