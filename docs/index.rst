@@ -3,7 +3,7 @@
 ========================
 piccard
 ========================
-A graph-based approach to census data analysis. Developed by Abdulmohseen AlAli, Elise Corbin, and Maliha Lodi.
+A graph-based approach to census data analysis. Developed by Abdulmohseen AlAli, Fabian Corbin, and Maliha Lodi.
 
 .. toctree::
    :maxdepth: 2

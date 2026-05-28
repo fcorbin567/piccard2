@@ -54,4 +54,4 @@ This software is distributed under a CC0-1.0 Licence.
 GitHub repository
 -----------------
 
-To report a bug, contribute a fix, or look at the code behind ``piccard``, see this `GitHub repository  <https://github.com/ecorbin567/piccard2>`_.
+To report a bug, contribute a fix, or look at the code behind ``piccard``, see this `GitHub repository  <https://github.com/fcorbin567/piccard2>`_.

@@ -37,7 +37,7 @@ To install the pre-release version via git:
 
 .. code-block:: shell
 
-    pip install git+https://github.com/ecorbin567/piccard2.git
+    pip install git+https://github.com/fcorbin567/piccard2.git
 
 Then import:
 
@@ -92,4 +92,4 @@ To install via git:
 
 .. code-block:: shell
 
-    pip install git+https://github.com/ecorbin567/ppandas.git
+    pip install git+https://github.com/fcorbin567/ppandas.git

@@ -13,7 +13,7 @@
 
 project = "piccard"
 copyright = "2025"
-author = "Abdulmohseen AlAli, Elise Corbin, Maliha Lodi"
+author = "Abdulmohseen AlAli, Fabian Corbin, Maliha Lodi"
 
 
 # -- General configuration ---------------------------------------------------

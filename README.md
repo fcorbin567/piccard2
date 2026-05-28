@@ -1,6 +1,6 @@
 # piccard
 
-Developed by Abdulmohseen AlAli, Elise Corbin, and Maliha Lodi.
+Developed by Abdulmohseen AlAli, Fabian Corbin, and Maliha Lodi.
 
 The latest release of piccard is available on PyPI at https://pypi.org/project/piccard/.
 
