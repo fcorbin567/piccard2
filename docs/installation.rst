@@ -30,7 +30,7 @@ To install the current released version:
 
 .. code-block:: shell
 
-    pip install piccard==1.1.1
+    pip install piccard==1.1.2
 
 
 To install the pre-release version via git:
