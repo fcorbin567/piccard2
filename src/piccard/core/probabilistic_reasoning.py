@@ -21,7 +21,7 @@ def core_prob_reasoning_networks(
     dependent_vars_1: List[str], 
     dependent_vars_2: List[str], 
     mismatches: Optional[dict[str, str]] = None, 
-) -> PDataFrame:
+): # -> PDataFrame
     '''
     Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
     For more information about ppandas, visit: https://github.com/D3Mlab/ppandas/tree/master
@@ -144,7 +144,7 @@ def core_prob_reasoning_years(
     dependent_vars_1: List[str], 
     dependent_vars_2: List[str], 
     mismatches: Optional[dict[str, str]] = None, 
-) -> PDataFrame:
+): # -> PDataFrame
     '''
     Allows probabilistic reasoning over network representations of heterogenous/unlinked datasets using the ppandas package. 
     For more information about ppandas, visit: https://github.com/D3Mlab/ppandas/tree/master
