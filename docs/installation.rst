@@ -30,7 +30,7 @@ To install the current released version:
 
 .. code-block:: shell
 
-    pip install piccard==1.1.2
+    pip install piccard
 
 
 To install the pre-release version via git:
@@ -48,17 +48,6 @@ Then import:
 
 Installing ``tscluster``
 ----------------------
-
-``tscluster`` requires the following:
-
-* Python 3.8+
-* numpy>=1.26 
-* scipy>=1.10 
-* gurobipy>=11.0 
-* tslearn>=0.6.3   
-* h5py>=3.10
-* pandas>=2.2
-* matplotlib>=3.8
 
 Note that you will need a Gurobi licence when using OptTSCluster with large model size. See `here <https://support.gurobi.com/hc/en-us/articles/12684663118993-How-do-I-obtain-a-Gurobi-license>`_ for more about Gurobi licences.
 
@@ -78,15 +67,6 @@ To install the pre-release version via git:
 
 Installing ``ppandas``
 ----------------------
-
-``ppandas`` requires the following:
-
-* pgmpy==0.1.9
-* networkx==2.4
-* matplotlib
-* python-interval
-* geopandas
-* geovoronoi
 
 To install via git:
 
