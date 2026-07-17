@@ -228,6 +228,12 @@ def core_cluster(
     for year in years:
         table[f'cluster_assignment_{year}'] = list(cluster_assignments_table[year])
 
+    clean_features = {}
+    for t, year in enumerate(label_dict['T']):
+        for n in label_dict['N']:
+            geouid = table.iloc[n][f"geouid_{year}"]
+            clean_features[(year, geouid)] = arr[t, n]
+
     # Add cluster assignments to graph nodes
     nodes_list = list(G.nodes(data=True))
     for node in nodes_list:
@@ -242,9 +248,11 @@ def core_cluster(
                     # comparing distances between clusters
                     old_cluster_distance = 0
                     new_cluster_distance = 0
-                    for i in range(len(dict)):
-                        old_cluster_distance += (abs(int(node[1][label_dict['F'][i]]) - int(old_dict[i])))
-                        new_cluster_distance += (abs(int(node[1][label_dict['F'][i]]) - int(dict[i])))
+
+                    values = clean_features[(year, node[0])]
+                    old_cluster_distance = np.abs(values - old_dict.values).sum()
+                    new_cluster_distance = np.abs(values - dict.values).sum()
+                    
                     if old_cluster_distance < new_cluster_distance:
                         cluster = node[1]['cluster_assignment']
                 node[1]['cluster_assignment'] = cluster
@@ -303,7 +311,7 @@ def core_filter_columns(
                             break
                 except OverflowError: # set infinity to nan
                     index = table.loc[(table == entry).any(axis=1)].index[0]
-                    table[col][index] = np.nan                       
+                    table.loc[index, col] = np.nan                      
             if not non_numerical_val_in_col:
                 col_list.append(col)
 
