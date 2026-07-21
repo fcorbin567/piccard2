@@ -25,7 +25,8 @@ class NetworkTable():
         self,
         table: pd.DataFrame,
         years: list[str],
-        id: str
+        id: str,
+        weighted: bool
     ):
         '''
         Constructor
@@ -33,6 +34,7 @@ class NetworkTable():
         self.table = table
         self.years = years
         self.id = id
+        self.weighted = False
     
     def modify_table(
         self,
@@ -180,6 +182,8 @@ def core_create_network_table(
     id: str, 
     crs: Optional[CRS] = "EPSG:3347",
     threshold: Optional[float] = 0.05,
+    weighted: Optional[bool] = False,
+    cols_to_weight: Optional[List[str]] = [],
     verbose: Optional[bool] = True
 ) -> NetworkTable:
   '''
@@ -205,7 +209,17 @@ def core_create_network_table(
       threshold (float | None):
           The percentage of overlap (divided by 100)
           that geographic areas must meet or exceed in order to have a connection.
-          Default is 0.05, or 5 percent.    
+          Default is 0.05, or 5 percent. 
+
+      weighted (bool | None):
+          Whether to apply weights to the variables listed in cols_to_weight so that data points that show up
+          multiple times in the same column (due to that data point appearing in multiple temporal paths)
+          do not exert undue influence on clustering and other data analysis. Default is False. If True, you must
+          specify the columns to apply weights to using the cols_to_weight parameter. Specified columns should be numerical.
+
+      cols_to_weight (List[str] | None):
+          Columns to apply weights to. Default is []. If specified and weighted is False, no columns are weighted. If unspecified (or invalid columns specified)
+          and weighted is True, a ValueError is thrown.  
 
       verbose (bool | None):
           Whether to issue print statements about the progress of network creation. Default is true.
@@ -254,16 +268,33 @@ def core_create_network_table(
   if verbose:
       print('All attributes found')
 
-  #Formatting final table columns
+  # Formatting final table columns
   for i in range(len(final_cols)):
       col = str(final_cols[i])
       popped = final_table.pop(col)
       final_table.insert(i, popped.name, popped)
   final_table.columns= final_table.columns.str.lower()
+  id = id.lower()
+  final_col_names = set([col[:-5] for col in final_table.columns])
+
+  if weighted:
+      if cols_to_weight == []:
+          raise ValueError("If weighted is True, you must specify at least one column in the table to weight.")
+      elif any([col.lower() not in final_col_names for col in cols_to_weight]):
+          raise ValueError("At least one specified column not found in the network table. Check column names.")
+      for col_name in cols_to_weight:
+          for year in years:
+              for unique_id in final_table[f'{id}_{year}'].unique():
+                try:
+                   num_times_repeated = len(final_table[final_table[f'{id}_{year}'] == unique_id])
+                   final_table.loc[final_table[f'{id}_{year}'] == unique_id, f'{col_name}_{year}'] = final_table.loc[final_table[f'{id}_{year}'] == unique_id, f'{col_name}_{year}'] / num_times_repeated
+                except TypeError:
+                   raise TypeError(f"Specified column {col_name} may not be numerical.")
+
   if verbose:
       print('Table created')
 
-  return NetworkTable(final_table, years, id)
+  return NetworkTable(final_table, years, id, weighted)
 
 # -----------------------Helper Functions-----------------------
 

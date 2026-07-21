@@ -141,6 +141,8 @@ def create_network_table(
     id: str, 
     crs: Optional[CRS] = "EPSG:3347",
     threshold: Optional[float] = 0.05,
+    weighted: Optional[bool] = False,
+    cols_to_weight: Optional[List[str]] = [],
     verbose: Optional[bool] = True
 ) -> NetworkTable:
   '''
@@ -166,7 +168,17 @@ def create_network_table(
       threshold (float | None):
           The percentage of overlap (divided by 100)
           that geographic areas must meet or exceed in order to have a connection.
-          Default is 0.05, or 5 percent.    
+          Default is 0.05, or 5 percent. 
+
+      weighted (bool | None):
+          Whether to apply weights to the variables listed in cols_to_weight so that data points that show up
+          multiple times in the same column (due to that data point appearing in multiple temporal paths)
+          do not exert undue influence on clustering and other data analysis. Default is False. If True, you must
+          specify the columns to apply weights to using the cols_to_weight parameter. Specified columns should be numerical.
+
+      cols_to_weight (List[str] | None):
+          Columns to apply weights to. Default is []. If specified and weighted is False, no columns are weighted. If unspecified (or invalid columns specified)
+          and weighted is True, a ValueError is thrown.  
 
       verbose (bool | None):
           Whether to issue print statements about the progress of network creation. Default is true.
@@ -175,7 +187,7 @@ def create_network_table(
       NetworkTable: the table.
   '''
   return core_create_network_table(
-      census_dfs=census_dfs, years=years, id=id, crs=crs, threshold=threshold, verbose=verbose)
+      census_dfs=census_dfs, years=years, id=id, crs=crs, threshold=threshold, weighted=weighted, cols_to_weight=cols_to_weight, verbose=verbose)
 
 
 # Module 2: Clustering
