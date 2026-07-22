@@ -19,6 +19,9 @@ ClusteredNetworkTable class
 - ``table`` (``pandas.DataFrame``): The table, presented as a ``pandas`` DataFrame.
 - ``years`` (List[str]): The census years present in the table.
 - ``id`` (str): The unique geographical id used to distinguish geographical areas in the table.
+- ``weighted`` (bool): Whether weights have been applied to the network so that data points that show up
+    multiple times in the same column (due to that data point appearing in multiple temporal paths)
+    do not exert undue influence on clustering and other data analysis.
 - ``num_clusters`` (int): The number of clusters that data can be assigned to. Determined by the user.
 - ``tsc`` (Union[OptTSCluster, GreedyTSCluster]): The ``tscluster`` clustering object used to fit the data.
 - ``arr`` (np.ndarray[np.float64]): The array of data used in clustering.
@@ -38,6 +41,9 @@ Module 2 Functions
 Converts a piccard network table into a 3d numpy array of all possible paths and their corresponding features. This will be used for clustering with tscluster.
 The user can (optionally) input a list of columns that they want to be considered in the clustering algorithm, 
 and the function will check that these columns are valid.
+
+Note that weights are applied to the numpy array regardless of whether ``weighted`` is true in the network table. The network table is not
+modified to include weights.
 
 *Parameters:*
 

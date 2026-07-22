@@ -18,6 +18,9 @@ NetworkTable class
 - ``table`` (``pandas.DataFrame``): The table, presented as a ``pandas`` DataFrame.
 - ``years`` (List[str]): The census years present in the table.
 - ``id`` (str): The unique geographical id used to distinguish geographical areas in the table.
+- ``weighted`` (bool): Whether weights have been applied to the network so that data points that show up
+          multiple times in the same column (due to that data point appearing in multiple temporal paths)
+          do not exert undue influence on clustering and other data analysis.
 
 *Methods:*
 ~~~~~~~~~~~
@@ -126,6 +129,16 @@ Each feature present in the data is a column, and each possible path through the
     The percentage of overlap (divided by 100)
     that geographic areas must meet or exceed in order to have a connection.
     Default is 0.05, or 5 percent.  
+
+* ``weighted`` (bool | None):
+    Whether to apply weights to the variables listed in cols_to_weight so that data points that show up
+    multiple times in the same column (due to that data point appearing in multiple temporal paths)
+    do not exert undue influence on clustering and other data analysis. Default is False. If True, you must
+    specify the columns to apply weights to using the cols_to_weight parameter. Specified columns should be numerical.
+
+* ``cols_to_weight`` (List[str] | None):
+    Columns to apply weights to. Default is []. If specified and weighted is False, no columns are weighted. If unspecified (or invalid columns specified)
+    and weighted is True, a ValueError is thrown.  
 
 * ``verbose`` (bool | None):
     Whether to issue print statements about the progress of network creation. Default is true.
