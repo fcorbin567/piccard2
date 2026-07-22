@@ -1,17 +1,17 @@
 # Optional dependency: tscluster
 try:
-    import tscluster
+    from tscluster.opttscluster import OptTSCluster
+    from tscluster.greedytscluster import GreedyTSCluster
+    from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
     TSCLUSTER_AVAILABLE = True
 except ImportError:
     TSCLUSTER_AVAILABLE = False
 
+import copy
 import numpy as np
 import pandas as pd
 from typing import Optional, Any, Tuple, Union, List
 import networkx as nx
-from tscluster.opttscluster import OptTSCluster
-from tscluster.greedytscluster import GreedyTSCluster
-from tscluster.preprocessing.utils import load_data, tnf_to_ntf, ntf_to_tnf
 
 from .network import NetworkTable
 
@@ -26,6 +26,7 @@ class ClusteredNetworkTable(NetworkTable):
         table: pd.DataFrame,
         years: list[str],
         id: str,
+        weighted: bool,
         num_clusters: int,
         tsc: Union[OptTSCluster, GreedyTSCluster],
         arr: np.ndarray[np.float64], 
@@ -34,7 +35,7 @@ class ClusteredNetworkTable(NetworkTable):
         '''
         Constructor
         '''
-        super().__init__(table, years, id) 
+        super().__init__(table, years, id, weighted) 
         self.num_clusters = num_clusters
         self.tsc = tsc
         self.arr = arr
@@ -81,16 +82,27 @@ def core_clustering_prep(
     if cols == []:
         cols = table.columns.to_list()
 
+    cols_no_year = list(set([col[:-5] for col in cols]))
+
     # Filter columns
     filtered_cols = core_filter_columns(network_table, cols)
     network_table = filtered_cols[2]
-    table = network_table.table
+    orig_table = copy.deepcopy(network_table.table) # used in case we need to weight the table for clustering but return the unweighted table
+    table = copy.deepcopy(network_table.table)
+
+    if not network_table.weighted: # Use weights for clustering, even if the original table is not weighted
+        table = copy.deepcopy(network_table.table) # weights added only to table
+        for col_name in cols_no_year:
+          for year in years:
+              for unique_id in table[f'{network_table.id}_{year}'].unique():
+                num_times_repeated = len(table[table[f'{network_table.id}_{year}'] == unique_id])
+                table.loc[table[f'{network_table.id}_{year}'] == unique_id, f'{col_name}_{year}'] = table.loc[table[f'{network_table.id}_{year}'] == unique_id, f'{col_name}_{year}'] / num_times_repeated
 
     # Extract features for each year and add them to a 2D array representing that year. 
     # Then add that array to a list of arrays representing the 3D array used for tscluster.
     list_of_arrays = []
     for year in years:
-        year_statistics = table[[col for col in filtered_cols[0] if year in col]].to_numpy()
+        year_statistics = table[[col for col in filtered_cols[0] if year in col]].to_numpy() # list of arrays constructed from table (will always be weighted)
         list_of_arrays.append(year_statistics)
     
     # Filter out entities whose features are entirely NaN
@@ -110,6 +122,7 @@ def core_clustering_prep(
             if np.all(nans):
                 valid = False  # entire row is NaN, skip entity
                 table = table.drop(index=index)
+                orig_table = orig_table.drop(index=index) # both tables modified as necessary
                 index -= 1
                 break
             elif np.any(nans):
@@ -135,7 +148,7 @@ def core_clustering_prep(
     'F': filtered_cols[1]
     }
 
-    network_table.modify_table(table)
+    network_table.modify_table(orig_table) # update with dropped columns, but not with weights if added
 
     return (list_of_arrays, label_dict, network_table)
 
@@ -231,14 +244,14 @@ def core_cluster(
     clean_features = {}
     for t, year in enumerate(label_dict['T']):
         for n in label_dict['N']:
-            geouid = table.iloc[n][f"geouid_{year}"]
-            clean_features[(year, geouid)] = arr[t, n]
+            unique_id = table.iloc[n][f"{network_table.id}_{year}"]
+            clean_features[(year, unique_id)] = arr[t, n]
 
     # Add cluster assignments to graph nodes
     nodes_list = list(G.nodes(data=True))
     for node in nodes_list:
             year = node[0][:4]
-            cluster = table.loc[table[f'geouid_{year}'] == node[0]]
+            cluster = table.loc[table[f'{network_table.id}_{year}'] == node[0]]
             if len(cluster) != 0:
                 cluster = int(cluster.iloc[0][f'cluster_assignment_{year}'])
                 dict = tsc.get_named_cluster_centers(label_dict=label_dict)[cluster].loc[year]
@@ -261,7 +274,7 @@ def core_cluster(
     
     network_table.modify_table(table)
     
-    return ClusteredNetworkTable(network_table.table, network_table.years, network_table.id, num_clusters, tsc, arr, label_dict)
+    return ClusteredNetworkTable(network_table.table, network_table.years, network_table.id, network_table.weighted, num_clusters, tsc, arr, label_dict)
 
 # -----------------------Helper Functions-----------------------
 

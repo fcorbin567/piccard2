@@ -34,7 +34,7 @@ class NetworkTable():
         self.table = table
         self.years = years
         self.id = id
-        self.weighted = False
+        self.weighted = weighted
     
     def modify_table(
         self,
@@ -218,7 +218,7 @@ def core_create_network_table(
           specify the columns to apply weights to using the cols_to_weight parameter. Specified columns should be numerical.
 
       cols_to_weight (List[str] | None):
-          Columns to apply weights to. Default is []. If specified and weighted is False, no columns are weighted. If unspecified (or invalid columns specified)
+          Columns to apply weights to (do not add year suffixes). Default is []. If specified and weighted is False, no columns are weighted. If unspecified (or invalid columns specified)
           and weighted is True, a ValueError is thrown.  
 
       verbose (bool | None):
