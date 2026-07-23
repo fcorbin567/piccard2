@@ -35,7 +35,7 @@ class NetworkTable():
         self.table = table
         self.years = years
         self.id = id
-        self.id_col = self.id_col
+        self.id_col = id_col
         self.weighted = weighted
     
     def modify_table(
