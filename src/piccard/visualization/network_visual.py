@@ -169,7 +169,7 @@ def visual_plot_num_areas(
             The plot of the number of geographical areas.
     '''
     table = network_table.table
-    id_label = network_table.id
+    id_label = network_table.id_col
     if years is None:
         years = network_table.years
 

@@ -974,7 +974,7 @@ def visual_plot_clusters_map(
     # create hover data
     hover_data = {}
     # Add the ID column for the specific year
-    id_col = f'{network_table.id}_{year}'
+    id_col = f'{network_table.id_col}_{year}'
     if id_col.lower() in gdf.columns:
         hover_data[id_col.lower()] = True
     else:

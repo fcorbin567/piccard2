@@ -26,6 +26,7 @@ class NetworkTable():
         table: pd.DataFrame,
         years: list[str],
         id: str,
+        id_col: str,
         weighted: bool
     ):
         '''
@@ -34,6 +35,7 @@ class NetworkTable():
         self.table = table
         self.years = years
         self.id = id
+        self.id_col = self.id_col
         self.weighted = weighted
     
     def modify_table(
@@ -274,7 +276,6 @@ def core_create_network_table(
       popped = final_table.pop(col)
       final_table.insert(i, popped.name, popped)
   final_table.columns= final_table.columns.str.lower()
-  id = id.lower()
   final_col_names = set([col[:-5] for col in final_table.columns])
 
   if weighted:
@@ -284,17 +285,18 @@ def core_create_network_table(
           raise ValueError("At least one specified column not found in the network table. Check column names.")
       for col_name in cols_to_weight:
           for year in years:
-              for unique_id in final_table[f'{id}_{year}'].unique():
+              id_col = f"{id.lower()}_{year}"
+              for unique_id in final_table[id_col].unique():
                 try:
-                   num_times_repeated = len(final_table[final_table[f'{id}_{year}'] == unique_id])
-                   final_table.loc[final_table[f'{id}_{year}'] == unique_id, f'{col_name}_{year}'] = final_table.loc[final_table[f'{id}_{year}'] == unique_id, f'{col_name}_{year}'] / num_times_repeated
+                   num_times_repeated = len(final_table[final_table[id_col] == unique_id])
+                   final_table.loc[final_table[id_col] == unique_id, f'{col_name}_{year}'] = final_table.loc[final_table[id_col] == unique_id, f'{col_name}_{year}'] / num_times_repeated
                 except TypeError:
                    raise TypeError(f"Specified column {col_name} may not be numerical.")
 
   if verbose:
       print('Table created')
 
-  return NetworkTable(final_table, years, id, weighted)
+  return NetworkTable(final_table, years, id, id.lower(), weighted)
 
 # -----------------------Helper Functions-----------------------
 

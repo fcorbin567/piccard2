@@ -18,7 +18,8 @@ ClusteredNetworkTable class
 
 - ``table`` (``pandas.DataFrame``): The table, presented as a ``pandas`` DataFrame.
 - ``years`` (List[str]): The census years present in the table.
-- ``id`` (str): The unique geographical id used to distinguish geographical areas in the table.
+- ``id`` (str): The unique geographical id used to distinguish geographical areas in the table; used externally when interacting with GeoJSON files.
+- ``id_col`` (str): id.lower(); used internally to find column names in the network.
 - ``weighted`` (bool): Whether weights have been applied to the network so that data points that show up
     multiple times in the same column (due to that data point appearing in multiple temporal paths)
     do not exert undue influence on clustering and other data analysis.

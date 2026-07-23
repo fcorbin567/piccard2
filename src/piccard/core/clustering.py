@@ -26,6 +26,7 @@ class ClusteredNetworkTable(NetworkTable):
         table: pd.DataFrame,
         years: list[str],
         id: str,
+        id_col: str,
         weighted: bool,
         num_clusters: int,
         tsc: Union[OptTSCluster, GreedyTSCluster],
@@ -35,7 +36,7 @@ class ClusteredNetworkTable(NetworkTable):
         '''
         Constructor
         '''
-        super().__init__(table, years, id, weighted) 
+        super().__init__(table, years, id, id_col, weighted) 
         self.num_clusters = num_clusters
         self.tsc = tsc
         self.arr = arr
@@ -94,9 +95,10 @@ def core_clustering_prep(
         table = copy.deepcopy(network_table.table) # weights added only to table
         for col_name in cols_no_year:
           for year in years:
-              for unique_id in table[f'{network_table.id}_{year}'].unique():
-                num_times_repeated = len(table[table[f'{network_table.id}_{year}'] == unique_id])
-                table.loc[table[f'{network_table.id}_{year}'] == unique_id, f'{col_name}_{year}'] = table.loc[table[f'{network_table.id}_{year}'] == unique_id, f'{col_name}_{year}'] / num_times_repeated
+              id_col = f'{network_table.id_col}_{year}'
+              for unique_id in table[id_col].unique():
+                num_times_repeated = len(table[table[id_col] == unique_id])
+                table.loc[table[id_col] == unique_id, f'{col_name}_{year}'] = table.loc[table[id_col] == unique_id, f'{col_name}_{year}'] / num_times_repeated
 
     # Extract features for each year and add them to a 2D array representing that year. 
     # Then add that array to a list of arrays representing the 3D array used for tscluster.
@@ -244,14 +246,14 @@ def core_cluster(
     clean_features = {}
     for t, year in enumerate(label_dict['T']):
         for n in label_dict['N']:
-            unique_id = table.iloc[n][f"{network_table.id}_{year}"]
+            unique_id = table.iloc[n][f"{network_table.id_col}_{year}"]
             clean_features[(year, unique_id)] = arr[t, n]
 
     # Add cluster assignments to graph nodes
     nodes_list = list(G.nodes(data=True))
     for node in nodes_list:
             year = node[0][:4]
-            cluster = table.loc[table[f'{network_table.id}_{year}'] == node[0]]
+            cluster = table.loc[table[f'{network_table.id_col}_{year}'] == node[0]]
             if len(cluster) != 0:
                 cluster = int(cluster.iloc[0][f'cluster_assignment_{year}'])
                 dict = tsc.get_named_cluster_centers(label_dict=label_dict)[cluster].loc[year]
@@ -274,7 +276,7 @@ def core_cluster(
     
     network_table.modify_table(table)
     
-    return ClusteredNetworkTable(network_table.table, network_table.years, network_table.id, network_table.weighted, num_clusters, tsc, arr, label_dict)
+    return ClusteredNetworkTable(network_table.table, network_table.years, network_table.id, network_table.id_col, network_table.weighted, num_clusters, tsc, arr, label_dict)
 
 # -----------------------Helper Functions-----------------------
 
