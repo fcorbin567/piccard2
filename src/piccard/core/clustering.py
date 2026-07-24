@@ -81,19 +81,22 @@ def core_clustering_prep(
 
     # default to considering all features
     if cols == []:
-        cols = table.columns.to_list()
-
-    cols_no_year = list(set([col[:-5] for col in cols]))
+        cols = list(dict.fromkeys([col[:-5] for col in table.columns.tolist()]))
+    # add cols to years
+    cols_with_years = []
+    for col in cols:
+        for year in network_table.years:
+            cols_with_years.append(f"{col}_{year}")
 
     # Filter columns
-    filtered_cols = core_filter_columns(network_table, cols)
+    filtered_cols = core_filter_columns(network_table, cols, cols_with_years)
     network_table = filtered_cols[2]
     orig_table = copy.deepcopy(network_table.table) # used in case we need to weight the table for clustering but return the unweighted table
     table = copy.deepcopy(network_table.table)
 
     if not network_table.weighted: # Use weights for clustering, even if the original table is not weighted
         table = copy.deepcopy(network_table.table) # weights added only to table
-        for col_name in cols_no_year:
+        for col_name in cols:
           for year in years:
               id_col = f'{network_table.id_col}_{year}'
               for unique_id in table[id_col].unique():
@@ -104,7 +107,7 @@ def core_clustering_prep(
     # Then add that array to a list of arrays representing the 3D array used for tscluster.
     list_of_arrays = []
     for year in years:
-        year_statistics = table[[col for col in filtered_cols[0] if year in col]].to_numpy() # list of arrays constructed from table (will always be weighted)
+        year_statistics = table[[col for col in filtered_cols[0] if col.endswith(f"_{year}")]].to_numpy() # list of arrays constructed from table (will always be weighted)
         list_of_arrays.append(year_statistics)
     
     # Filter out entities whose features are entirely NaN
@@ -151,7 +154,6 @@ def core_clustering_prep(
     }
 
     network_table.modify_table(orig_table) # update with dropped columns, but not with weights if added
-
     return (list_of_arrays, label_dict, network_table)
 
 def core_cluster(
@@ -282,7 +284,8 @@ def core_cluster(
 
 def core_filter_columns(
     network_table: NetworkTable, 
-    cols: Optional[list[str]]=[]
+    cols: List[str],
+    cols_with_years: List[str]
     ) -> Tuple[List[str], List[str], NetworkTable]:
     '''
     Checks that the list of columns with data to be clustered is valid in the following ways:
@@ -308,7 +311,7 @@ def core_filter_columns(
     # but this is a sanity check
     col_list = []
 
-    for col in cols:
+    for col in cols_with_years:
         if col in table.columns.to_list():
             non_numerical_val_in_col = False
             for entry in table[col]:
@@ -336,22 +339,15 @@ def core_filter_columns(
     # the 3D array used for tscluster will not make sense.
     # note: we can improve on this with some version of the ppandas library (https://link.springer.com/article/10.1007/s10618-024-01054-7)
     cols_in_every_year = []
-    features_list = [] # for the label dictionary
-    add_to_list = True
-    col_names_without_year = list(dict.fromkeys([col[:-4] for col in col_list])) # remove duplicates while preserving original order
-    for col in col_names_without_year:
-        add_to_list = True
-        for year in years:
-            if f"{col}{year}" not in col_list:
-                add_to_list = False
-                break
-        for year in years:
-            if add_to_list:
-                if col[:-1] not in features_list:
-                    features_list.append(col[:-1])
-                cols_in_every_year.append(f"{col}{year}")
+    features_list = []
 
-    return (cols_in_every_year, features_list, network_table)
+    for col in cols:
+        year_cols = [f"{col}_{year}" for year in years]
+        if all(c in col_list for c in year_cols):
+            features_list.append(col)
+            cols_in_every_year.extend(year_cols)
+
+    return cols_in_every_year, features_list, network_table
 
 def core_cluster_means_by_year(
     network_table: pd.DataFrame,

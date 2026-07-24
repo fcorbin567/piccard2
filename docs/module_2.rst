@@ -52,7 +52,7 @@ modified to include weights.
     The NetworkTable containing the data to be clustered.
  
 * ``cols`` (list[str] | None): 
-    A list of the names of network table columns that should be considered in
+    A list of the names of variables (network table columns minus years) that should be considered in
     the clustering algorithm. If none, every numerical feature will be considered. Leaving it none is
     not recommended as many numerical features, such as network level, have little bearing on the data.
 
